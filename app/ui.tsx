@@ -31,3 +31,7 @@ export const withError = (path: string, err: string) => `${path}${path.includes(
 
 export type SP = Promise<{ [k: string]: string | string[] | undefined }>;
 export const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** Dates on screen in US format (11/13/2026), matching the PDFs. Accepts ISO dates or timestamps. */
+export const us = (d: string | null | undefined) => { if (!d) return ''; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d); return m ? `${m[2]}/${m[3]}/${m[1]}` : d; };
+export const daysSince = (d: string, today: string) => Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 86400000));

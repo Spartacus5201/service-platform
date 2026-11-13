@@ -21,6 +21,7 @@ import type { Result } from '@/src/service/record';
 import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '@/src/service/correct';
 import { closeoutData } from '@/src/service/closeout';
 import { buildIdUpdate, markExported, saveIdOverrides } from '@/src/service/idupdate';
+import { createJob, updateJob, closeJob, reopenJob, attachAudit, JobError, type JobSource } from '@/src/jobs/jobs';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 
@@ -28,7 +29,7 @@ const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v ==
 const n = (fd: FormData, k: string): number | null => { const v = s(fd, k); if (v === null) return null; const x = Number(v.replace(/[$,]/g, '')); return Number.isFinite(x) ? x : null; };
 const msgOf = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 const isRedirect = (e: unknown) => typeof e === 'object' && e !== null && 'digest' in e && String((e as { digest: unknown }).digest).startsWith('NEXT_REDIRECT');
-const domainError = (e: unknown) => e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError || e instanceof CloseoutError;
+const domainError = (e: unknown) => e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError || e instanceof CloseoutError || e instanceof JobError;
 
 // ---------- account ----------
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
@@ -129,7 +130,7 @@ export async function createDocumentAction(fd: FormData) {
     const d = await createDocument(await getDb(), {
       propertyId, type, title: s(fd, 'title') ?? undefined, createdOn: today(), createdBy: sess.userId,
       salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'),
-      fromAuditBatch: batchId ?? undefined, actsAs: type === 'Proposal' ? (fd.getAll('acts_as').filter((x): x is 'WA' | 'RFM' => x === 'WA' || x === 'RFM')) : undefined,
+      fromAuditBatch: batchId ?? undefined, jobId: s(fd, 'job_id'), actsAs: type === 'Proposal' ? (fd.getAll('acts_as').filter((x): x is 'WA' | 'RFM' => x === 'WA' || x === 'RFM')) : undefined,
     });
     redirect(`/documents/${d.documentId}`);
   } catch (e) {
@@ -350,7 +351,7 @@ export async function createCloseoutAction(fd: FormData) {
   let visitId: string;
   try {
     visitId = (await recordVisit(await getDb(), { propertyId, visitedOn: s(fd, 'visited_on') ?? today(), technician: s(fd, 'technician'), outcome: (s(fd, 'outcome') ?? 'completed') as Outcome,
-      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId, documentId: s(fd, 'document_id'), events })).visitId;
+      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId, documentId: s(fd, 'document_id'), jobId: s(fd, 'job_id'), events })).visitId;
   } catch (e) { if (domainError(e)) redirect(withError(back, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${visitId}`, 'Visit recorded. Review the wording for the client.'));
 }
@@ -395,6 +396,43 @@ export async function recordInvoiceRefAction(fd: FormData) {
   await db.query(`UPDATE invoice_submission s SET external_ref=$2 WHERE EXISTS (SELECT 1 FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE il.submission_id=s.id AND se.visit_id=$1) AND COALESCE(trim(s.external_ref),'')=''`, [id, ref]);
   await db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'invoice_ref_recorded','visit',$2,$3)`, [sess.userId, id, JSON.stringify({ visit_id: id, ref })]);
   redirect(withMsg(`/visits/${id}`, 'Invoice number recorded.'));
+}
+
+// ---------- jobs ----------
+const jobFields = (fd: FormData) => ({
+  title: s(fd, 'title') ?? '', source: (s(fd, 'source') ?? 'other') as JobSource, requestedOn: s(fd, 'requested_on') ?? today(),
+  requestedBy: s(fd, 'requested_by'), requestNotes: s(fd, 'request_notes'), salesforceCase: s(fd, 'salesforce_case'), salesforceStatus: s(fd, 'salesforce_status'),
+});
+export async function createJobAction(fd: FormData) {
+  const sess = await requireCan('edit_documents');
+  const propertyId = s(fd, 'property_id')!;
+  let id: string;
+  try { id = await createJob(await getDb(), { propertyId, ...jobFields(fd), createdBy: sess.userId }); }
+  catch (e) { if (e instanceof JobError) redirect(withError(`/properties/${propertyId}`, e.message)); throw e; }
+  redirect(withMsg(`/jobs/${id}`, 'Job created.'));
+}
+export async function updateJobAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'job_id')!;
+  try { await updateJob(await getDb(), id, jobFields(fd)); }
+  catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
+  redirect(withMsg(`/jobs/${id}`, 'Saved.'));
+}
+export async function closeJobAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'job_id')!; const db = await getDb();
+  if (fd.get('reopen')) { await reopenJob(db, id); redirect(withMsg(`/jobs/${id}`, 'Job reopened.')); }
+  try { await closeJob(db, id, today(), s(fd, 'close_reason'), fd.get('early') === '1'); }
+  catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
+  redirect(withMsg(`/jobs/${id}`, 'Job closed.'));
+}
+export async function attachAuditAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'job_id')!; const batch = s(fd, 'batch_id');
+  if (!batch) redirect(withError(`/jobs/${id}`, 'Pick an audit.'));
+  try { await attachAudit(await getDb(), id, batch); }
+  catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
+  redirect(withMsg(`/jobs/${id}`, 'Audit attached.'));
 }
 
 // ---------- corrections ----------

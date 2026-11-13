@@ -21,9 +21,10 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const canInvoice = can(s.role, 'edit_prices');
   const log = await corrections(db, id);
   const aar = await aarForVisit(db, id);
+  const job = (await db.query<{ id: string; number: number }>(`SELECT j.id, j.number FROM job j JOIN visit v ON v.job_id=j.id WHERE v.id=$1`, [id])).rows[0];
   return (
     <>
-      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a> / Service notes {c.visit.visitedOn}</div>
+      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a>{job && <> / <a href={`/jobs/${job.id}`}>Job #{job.number}</a></>} / Service notes {c.visit.visitedOn}</div>
       <h1>Service notes</h1>
       <p className="sub">{c.visit.visitedOn} · {c.visit.technician ?? 'no technician'} · {c.property.name} · code {c.code}, charge {c.chargeCode}{c.visit.documentNumber ? ` · WA ${c.visit.documentNumber}` : ''}</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />

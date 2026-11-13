@@ -7,6 +7,7 @@ import { auditLines } from '@/src/queries/audit';
 import { ACTIONS } from '@/src/review/overrides';
 import { stagedLines, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { createDocumentAction, overrideAction } from '../../../../actions';
+import { openJobs } from '@/src/jobs/jobs';
 import { Badge, Flash, actionTone, warrantyTone, one, type SP } from '../../../../ui';
 
 export default async function AuditReview({ params, searchParams }: { params: Promise<{ id: string; batchId: string }>; searchParams: SP }) {
@@ -26,6 +27,8 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
   const staged = await stagedLines(db, batchId, today());
   const stage = new Map(staged.map((l) => [l.readingId, l]));
   const sc = countStages(staged);
+  const jobs = canDocs ? await openJobs(db, id) : [];
+  const batchJob = (await db.query<{ job_id: string | null }>(`SELECT job_id FROM import_batch WHERE id=$1`, [batchId])).rows[0]?.job_id ?? '';
   const stageTone = (x: UnitStage) => (x === 'needs_document' || x === 'revisit' || x === 'not_fixed' ? 'warn' : x === 'visited' ? 'ok' : 'info');
   return (
     <>
@@ -103,6 +106,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
           <p className="small" style={{ marginTop: 0 }}>Starts with every line that needs service, plus Investigate and Verify ID lines (unpriced). Unrecognized codes are left off. You can edit before issuing.</p>
           <input type="hidden" name="property_id" value={id} /><input type="hidden" name="batch_id" value={batchId} />
           <div className="row">
+            <div className="field"><label htmlFor="job_id">Job</label><select id="job_id" name="job_id" defaultValue={batchJob}><option value="">New job from this audit</option>{jobs.map((x) => <option key={x.id} value={x.id}>#{x.number} {x.title}</option>)}</select></div>
             <div className="field"><label htmlFor="type">Type</label><select id="type" name="type"><option value="WA">Work Authorization</option><option value="Proposal">Proposal</option><option value="RFM">RFM</option></select></div>
             <div className="field" style={{ flex: 2 }}><label htmlFor="title">Project name</label><input id="title" name="title" /></div>
             <div className="field"><label htmlFor="salesforce_case">Salesforce Case</label><input id="salesforce_case" name="salesforce_case" /></div>

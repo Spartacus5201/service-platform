@@ -61,3 +61,5 @@ button.link { background: none; border: 0; color: var(--brand); padding: 0; } bu
 .results { list-style: none; margin: 0; padding: 0; }
 .results li { padding: .6rem .9rem; border-bottom: 1px solid var(--line); }
 .results li:last-child { border-bottom: 0; }
+.jobline { list-style: none; margin: 0; padding: 0; } .jobline li { padding: .35rem 0; border-bottom: 1px solid var(--line); } .jobline li > span:first-child { display: inline-block; min-width: 6.5rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+ul.cols { columns: 3 14rem; padding-left: 1.1rem; } ul.cols li { break-inside: avoid; margin-bottom: .25rem; }

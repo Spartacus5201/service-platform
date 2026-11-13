@@ -1,6 +1,9 @@
 import { followUps } from '@/src/service/verify';
 import { stagedLines, latestAuditBatch, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { today } from '@/src/server/dates';
+import { listJobs } from '@/src/jobs/jobs';
+import { StageBadge } from '../../jobs/stage';
+import { createJobAction } from '../../actions';
 import { lowBatteryDevices } from '@/src/service/battery';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
@@ -9,7 +12,7 @@ import { can } from '@/src/auth/auth';
 import { getProperty, propertyDocuments, propertyImports, propertyUnits } from '@/src/server/queries';
 import { saveSystemNotesAction, updateProperty } from '../../actions';
 import { BRANDS, MILESTONES, PRICE_ITEMS, UTILITIES, equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
-import { Badge, Flash, one, type SP } from '../../ui';
+import { Badge, Flash, one, us, type SP } from '../../ui';
 import ImportForm from './import-form';
 
 const KIND: Record<string, string> = { auto_audit: 'Auto Audit', manual_audit: 'Manual Audit', occupancy: 'Occupancy', unit_directory: 'Unit Directory', cim_nextcentury: 'CIM', cim_inovonics: 'CIM (Inovonics)', psr: 'PSR' };
@@ -28,6 +31,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
     `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
   const fups = canDocs ? await followUps(db, id) : [];
   const latest = await latestAuditBatch(db, id);
+  const jobs = canDocs ? await listJobs(db, { propertyId: id }) : [];
   const lowCount = canDocs ? (await lowBatteryDevices(db, { propertyId: id })).length : 0;
   const stages = latest ? countStages(await stagedLines(db, latest.id, today())) : null;
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
@@ -52,6 +56,35 @@ export default async function PropertyPage({ params, searchParams }: { params: P
       {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
 
       {canImport && <ImportForm propertyId={id} firstImport={units.length === 0} />}
+
+      {canDocs && (<>
+        <h2>Jobs</h2>
+        <div className="tablewrap"><table>
+          <thead><tr><th>Job</th><th>Stage</th><th>Requested</th><th>Case</th></tr></thead>
+          <tbody>
+            {jobs.map((j) => <tr key={j.id}><td><a href={`/jobs/${j.id}`}>#{j.number} {j.title}</a></td><td><StageBadge stage={j.stage} /></td><td>{us(j.requestedOn)}</td><td>{j.salesforceCase ?? ''}</td></tr>)}
+            {!jobs.length && <tr><td colSpan={4} className="small">No open jobs.</td></tr>}
+          </tbody>
+        </table></div>
+        <details className="card" style={{ marginTop: '.75rem' }}>
+          <summary><b>New job</b> (a request came in)</summary>
+          <form action={createJobAction}>
+            <input type="hidden" name="property_id" value={id} />
+            <div className="row">
+              <div className="field" style={{ flex: 2 }}><label htmlFor="job_title">Title</label><input id="job_title" name="title" required placeholder="e.g. Units not reading on October bills" /></div>
+              <div className="field"><label htmlFor="job_source">Came in by</label><select id="job_source" name="source" defaultValue="salesforce"><option value="salesforce">Salesforce case</option><option value="phone">Phone</option><option value="email">Email</option><option value="audit">Audit</option><option value="other">Other</option></select></div>
+              <div className="field"><label htmlFor="job_on">Requested on</label><input id="job_on" name="requested_on" type="date" defaultValue={today()} /></div>
+            </div>
+            <div className="row">
+              <div className="field"><label htmlFor="job_by">Requested by</label><input id="job_by" name="requested_by" /></div>
+              <div className="field"><label htmlFor="job_case">Salesforce case</label><input id="job_case" name="salesforce_case" /></div>
+            </div>
+            <div className="field"><label htmlFor="job_notes">What was asked</label><textarea id="job_notes" name="request_notes" rows={2} /></div>
+            <div className="actions"><button type="submit">Create job</button></div>
+          </form>
+        </details>
+        <p><a href={`/jobs?property=${id}`}>All jobs for this property, including closed →</a></p>
+      </>)}
 
       <h2>Imports</h2>
       <div className="tablewrap"><table>

@@ -1,3 +1,4 @@
+import { openJobs } from '@/src/jobs/jobs';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
@@ -21,7 +22,9 @@ export default async function NewCloseout({ params, searchParams }: { params: Pr
   const docs = (await db.query<{ id: string; number: string; type: string; title: string | null; issued: boolean }>(
     `SELECT d.id, d.number, d.type, d.title, EXISTS (SELECT 1 FROM document_version v WHERE v.document_id=d.id AND v.status='issued') issued
        FROM document d WHERE d.property_id=$1 AND d.type IN ('WA','Proposal') ORDER BY d.created_on DESC, d.created_at DESC`, [id])).rows;
-  const preferred = docs.find((d) => d.issued)?.id ?? '';
+  const preferred = one(sp.document) ?? docs.find((d) => d.issued)?.id ?? '';
+  const jobs = await openJobs(db, id);
+  const preferredJob = one(sp.job) ?? '';
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${id}`}>{p.name}</a> / New close-out</div>
@@ -35,6 +38,9 @@ export default async function NewCloseout({ params, searchParams }: { params: Pr
           <div className="field"><label htmlFor="technician">Technician</label><input id="technician" name="technician" required /></div>
           <div className="field"><label htmlFor="outcome">Visit outcome</label>
             <select id="outcome" name="outcome"><option value="completed">Completed</option><option value="unable_to_access">Unable to access</option><option value="unable_to_complete">Unable to complete</option></select></div>
+          <div className="field"><label htmlFor="job_id">Job</label>
+            <select id="job_id" name="job_id" defaultValue={preferredJob}><option value="">The WA's job (or none)</option>
+              {jobs.map((x) => <option key={x.id} value={x.id}>#{x.number} {x.title}</option>)}</select></div>
           <div className="field"><label htmlFor="document_id">Work authorization</label>
             <select id="document_id" name="document_id" defaultValue={preferred}><option value="">None (no WA)</option>
               {docs.map((d) => <option key={d.id} value={d.id}>{d.type} {d.number}{d.title ? ` · ${d.title}` : ''}{d.issued ? '' : ' (draft)'}</option>)}</select></div>

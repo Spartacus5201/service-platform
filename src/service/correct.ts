@@ -100,7 +100,7 @@ export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, r
   }
   const { warranty } = await loadSettings(db);
   await db.transaction(async (tx) => {
-    await tx.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7, document_id=$8 WHERE id=$1`,
+    await tx.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7, document_id=$8, job_id=COALESCE((SELECT job_id FROM document WHERE id=$8), job_id) WHERE id=$1`,
       [visitId, next.visitedOn, next.outcome, next.technician, next.salesforceCase, next.salesforceWorkOrder, next.notes, next.documentId]);
     if (coverageChanges) {
       const prop = (await tx.query<{ installed_by_us: boolean; install_completed_on: string | null }>(`SELECT installed_by_us, install_completed_on::text FROM property WHERE id=$1`, [v.property_id])).rows[0];

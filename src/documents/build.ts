@@ -54,6 +54,8 @@ export interface NewDocument {
   salesforceWorkOrder?: string | null;
   /** Build lines from the audit's Needs Service / Investigate rows. */
   fromAuditBatch?: string;
+  /** The job this document belongs to. Default: the job the audit is attached to, else a new job. */
+  jobId?: string | null;
 }
 
 export interface Created { documentId: string; versionId: string; number: string; lines: number }
@@ -93,10 +95,13 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
   let out!: Created;
   await db.transaction(async (tx) => {
     const number = await nextDocumentNumber(tx, inv.code, input.createdOn);
+    const { jobForDocument } = await import('../jobs/jobs');
+    const jobId = await jobForDocument(tx, { propertyId: input.propertyId, jobId: input.jobId ?? null, batchId: input.fromAuditBatch ?? null,
+      title: input.title ?? `${input.type} ${number}`, requestedOn: input.createdOn, salesforceCase: input.salesforceCase ?? null, createdBy: input.createdBy ?? null });
     const doc = (await one<{ id: string }>(tx,
-      `INSERT INTO document (type,property_id,number,title,acts_as,salesforce_case,salesforce_work_order,created_by,charge_code,created_on)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [input.type, input.propertyId, number, input.title ?? null, input.actsAs ?? null, input.salesforceCase ?? null, input.salesforceWorkOrder ?? null, input.createdBy ?? null, input.chargeCode ?? inv.chargeCode, input.createdOn]))!.id;
+      `INSERT INTO document (type,property_id,number,title,acts_as,salesforce_case,salesforce_work_order,created_by,charge_code,created_on,job_id,source_batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [input.type, input.propertyId, number, input.title ?? null, input.actsAs ?? null, input.salesforceCase ?? null, input.salesforceWorkOrder ?? null, input.createdBy ?? null, input.chargeCode ?? inv.chargeCode, input.createdOn, jobId, input.fromAuditBatch ?? null]))!.id;
     const ver = (await one<{ id: string }>(tx, `INSERT INTO document_version (document_id,version) VALUES ($1,1) RETURNING id`, [doc]))!.id;
 
     if (input.fromAuditBatch && input.type !== 'RFM') {

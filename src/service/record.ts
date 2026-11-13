@@ -40,6 +40,7 @@ export interface VisitInput {
   salesforceCase?: string | null;
   salesforceWorkOrder?: string | null;
   documentId?: string | null;            // the WA this visit closes
+  jobId?: string | null;                 // the job; defaults to the WA's job
   notes?: string | null;
   createdBy?: string | null;
   events: EventInput[];
@@ -71,6 +72,7 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
     if (!d || d.property_id !== input.propertyId) throw new ServiceError('That work authorization belongs to another property.');
     // The visit inherits the WA's Salesforce references unless the report gave its own.
     input = { ...input, salesforceCase: input.salesforceCase || d.salesforce_case, salesforceWorkOrder: input.salesforceWorkOrder || d.salesforce_work_order };
+    if (!input.jobId) input = { ...input, jobId: (await one<{ job_id: string | null }>(db, `SELECT job_id FROM document WHERE id=$1`, [input.documentId]))?.job_id ?? null };
   }
 
   const warnings: string[] = [];
@@ -78,10 +80,10 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
   let visitId = '';
   await db.transaction(async (tx) => {
     visitId = (await one<{ id: string }>(tx,
-      `INSERT INTO visit (property_id,visited_on,technician,outcome,salesforce_case,salesforce_work_order,notes,created_by,document_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      `INSERT INTO visit (property_id,visited_on,technician,outcome,salesforce_case,salesforce_work_order,notes,created_by,document_id,job_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [input.propertyId, input.visitedOn, input.technician ?? null, input.outcome, input.salesforceCase ?? null,
-       input.salesforceWorkOrder ?? null, input.notes ?? null, input.createdBy ?? null, input.documentId ?? null]))!.id;
+       input.salesforceWorkOrder ?? null, input.notes ?? null, input.createdBy ?? null, input.documentId ?? null, input.jobId ?? null]))!.id;
 
     for (const e of input.events) {
       const ep = await one<{ property_id: string }>(tx,

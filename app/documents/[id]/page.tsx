@@ -28,6 +28,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   if (tech && !versions.some((x) => x.status === 'issued')) notFound();
   const qs = canPrice ? await quoteStatus(db, id, today()) : 'not_applicable';
   const base = `/documents/${id}`;
+  const job = (await db.query<{ id: string; number: number }>(`SELECT j.id, j.number FROM job j JOIN document d ON d.job_id=j.id WHERE d.id=$1`, [id])).rows[0];
   const linked = (await db.query<{ id: string; visited_on: string }>(`SELECT id, visited_on::text FROM visit WHERE document_id=$1 ORDER BY visited_on`, [id])).rows;
   const isDraft = v.status === 'draft';
 
@@ -46,7 +47,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
 
   return (
     <>
-      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${d.property_id}`}>{d.property}</a> / {d.number}</div>
+      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${d.property_id}`}>{d.property}</a>{job && <> / <a href={`/jobs/${job.id}`}>Job #{job.number}</a></>} / {d.number}</div>
       <h1>{d.type} {d.number} <span className="small">{d.title ?? ''}</span></h1>
       <p className="sub">
         Version {v.version} <Badge tone={v.status === 'issued' ? 'ok' : 'warn'}>{v.status}</Badge>

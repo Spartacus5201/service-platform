@@ -48,6 +48,9 @@ export function Today({ q }: { q: Queues }) {
       <Queue title={`ID updates sent, not confirmed after ${LIMITS.idConfirm} days`} hint="No audit or check-in shows the new ID yet. Check with billing." n={q.idUnconfirmed.length}>
         {q.idUnconfirmed.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}/ids`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.rows, 'change')} <Age d={x.days} limit={LIMITS.idConfirm} /></li>)}
       </Queue>
+      <Queue title="Jobs ready to close" hint="Serviced, invoiced, verified and IDs confirmed." n={q.readyToClose.length}>
+        {q.readyToClose.map((x) => <li key={x.jobId}><a href={`/jobs/${x.jobId}`}>{x.property} #{x.number} {x.title}</a> <Age d={x.days} /></li>)}
+      </Queue>
       <Queue title={`Drafts older than ${LIMITS.staleDraft} days`} hint="Issue them or delete them." n={q.staleDrafts.length}>
         {q.staleDrafts.map((x) => <li key={x.documentId}><a href={`/documents/${x.documentId}`}>{x.property} {x.type} {x.number}</a> <Age d={x.days} limit={LIMITS.staleDraft} /></li>)}
       </Queue>

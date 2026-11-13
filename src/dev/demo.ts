@@ -11,6 +11,7 @@ import { recordVisit, type EventInput } from '../service/record';
 import { approveCloseout, saveClientText, sendInvoiceSheet, closeoutData } from '../service/closeout';
 import { buildIdUpdate, markExported } from '../service/idupdate';
 import { createUser } from '../auth/auth';
+import { createJob, attachAudit } from '../jobs/jobs';
 import { synthUnits, synthAutoAudit, synthCim, synthPsr, type SynthOpts } from './synthetic';
 
 export const DEMO_LOGIN = { email: 'demo@example.test', password: 'Demo-Pass-2026' };
@@ -51,7 +52,10 @@ export async function buildDemo(db: Db): Promise<{ properties: number }> {
     const units = lines.slice(0, 4);
     if (s.classId === '9910001') {
       // Fully worked: WA, completed visit, approved notes, invoiced, ID update sent; a later audit confirms one fix and shows one still failing.
-      const wa = await createDocument(db, { propertyId: p.pid, type: 'WA', title: 'Meter system repairs', createdOn: '2026-11-02', fromAuditBatch: p.audit.batchId!, salesforceCase: '00812345' });
+      const job = await createJob(db, { propertyId: p.pid, title: 'Quarterly audit follow-up', source: 'salesforce', requestedOn: '2026-10-28', requestedBy: 'Pat Manager',
+        requestNotes: 'Several units not reading on the October bills.', salesforceCase: '00812345', salesforceStatus: 'Work Scheduled' });
+      await attachAudit(db, job, p.audit.batchId!);
+      const wa = await createDocument(db, { propertyId: p.pid, type: 'WA', title: 'Meter system repairs', createdOn: '2026-11-02', fromAuditBatch: p.audit.batchId!, salesforceCase: '00812345', jobId: job });
       await issueVersion(db, wa.versionId, null, '2026-11-02');
       const a = units[0], b = units[1];
       if (a && b) {
@@ -62,27 +66,42 @@ export async function buildDemo(db: Db): Promise<{ properties: number }> {
         await buildIdUpdate(db, v.visitId); await markExported(db, v.visitId);
         // Later audit window (after the visit): first replaced unit healthy with its new ID, second still not transmitting.
         const o2: SynthOpts = { ...p.o, d1: '11/06/2026', d2: '11/12/2026', override: { [a.unit]: { code: 'OK', tx: 'MR-NEW-0001' }, [b.unit]: { code: 'NT', tx: 'MR-NEW-0002' } } };
-        await importParsed(db, p.pid, parseAutoAudit(synthAutoAudit(p.units, o2)), { createMissing: true });
+        const later = await importParsed(db, p.pid, parseAutoAudit(synthAutoAudit(p.units, o2)), { createMissing: true });
+        await attachAudit(db, job, later.batchId!);
       }
+      // A new request that has only just come in.
+      await createJob(db, { propertyId: p.pid, title: 'Resident disputes high water bill', source: 'phone', requestedOn: '2026-11-12', requestedBy: 'Pat Manager',
+        requestNotes: 'Unit 104 says the October bill is double the usual. Wants the meter tested.' });
     } else if (s.classId === '9910002') {
       // Out-of-warranty, no billing contract: visit recorded, client notes waiting for approval.
       if (units.length >= 2) {
-        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-10', technician: 'Casey Tech', outcome: 'completed', salesforceCase: '00812999',
+        const job = await createJob(db, { propertyId: p.pid, title: 'Two units not transmitting', source: 'email', requestedOn: '2026-11-03', requestedBy: 'Pat Manager', salesforceCase: '00812999', salesforceStatus: 'In Progress' });
+        await attachAudit(db, job, p.audit.batchId!);
+        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-10', technician: 'Casey Tech', outcome: 'completed', salesforceCase: '00812999', jobId: job,
           events: [ev(units[0].endpointId, units[0].code, 'HV-NEW-0001'), ev(units[1].endpointId, units[1].code)] });
         await saveClientText(db, v.visitId, [], 'Service was completed on the units listed below.', null);
       }
     } else {
       // MSA property: approved notes, not yet invoiced, ID update built but not sent; plus a draft Proposal.
+      const job = await createJob(db, { propertyId: p.pid, title: 'MSA quarterly service', source: 'audit', requestedOn: '2026-11-01' });
+      await attachAudit(db, job, p.audit.batchId!);
       if (units.length >= 2) {
-        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-11', technician: 'Jordan Tech', outcome: 'completed',
+        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-11', technician: 'Jordan Tech', outcome: 'completed', jobId: job,
           events: [ev(units[0].endpointId, units[0].code, 'CC-NEW-0001'), ev(units[1].endpointId, units[1].code)] });
         const c = await closeoutData(db, v.visitId);
         await saveClientText(db, v.visitId, c.units.map((u) => ({ eventId: u.eventId, clientComment: null, extraComment: null })), 'Thank you for your patience while we completed this work.', null);
         await approveCloseout(db, v.visitId, null);
         await buildIdUpdate(db, v.visitId);
       }
-      await createDocument(db, { propertyId: p.pid, type: 'Proposal', title: 'Transmitter replacement', createdOn: '2026-11-12', fromAuditBatch: p.audit.batchId! });
+      await createDocument(db, { propertyId: p.pid, type: 'Proposal', title: 'Transmitter replacement', createdOn: '2026-11-12', fromAuditBatch: p.audit.batchId!, jobId: job });
     }
   }
+  // Real timestamps are "now"; put the demo's steps on the dates the story says they happened.
+  await db.query(`UPDATE import_batch b SET imported_at = (SELECT max(GREATEST(r.read_date_1, r.read_date_2)) + 1 FROM audit_reading r WHERE r.import_batch_id=b.id) + time '09:00'
+                   WHERE EXISTS (SELECT 1 FROM audit_reading r WHERE r.import_batch_id=b.id)`);
+  await db.query(`UPDATE document_version v SET issued_at = d.created_on + time '15:00' FROM document d WHERE d.id=v.document_id AND v.issued_at IS NOT NULL`);
+  await db.query(`UPDATE visit SET approved_at = visited_on + 1 + time '10:00' WHERE approved_at IS NOT NULL`);
+  await db.query(`UPDATE id_update i SET exported_at = v.visited_on + 1 + time '11:00' FROM visit v WHERE v.id=i.visit_id AND i.exported_at IS NOT NULL`);
+  await db.query(`UPDATE id_update SET confirmed_at = exported_at + interval '7 days' WHERE confirmed_at IS NOT NULL`);
   return { properties: SPECS.length };
 }
