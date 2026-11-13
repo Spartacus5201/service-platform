@@ -21,7 +21,7 @@ export interface CloseoutUnit {
 }
 export interface Closeout {
   visit: { id: string; visitedOn: string; technician: string | null; outcome: string; status: 'draft' | 'approved'; approvedAt: string | null; summary: string | null;
-    salesforceCase: string | null; salesforceWorkOrder: string | null; documentNumber: string | null; notes: string | null };
+    salesforceCase: string | null; salesforceWorkOrder: string | null; documentNumber: string | null; documentId: string | null; notes: string | null };
   property: { id: string; name: string; classId: string; address: string | null; city: string | null; state: string | null; zip: string | null };
   contact: { name: string | null; phone: string | null; email: string | null };
   code: string; chargeCode: ChargeCode;
@@ -43,8 +43,8 @@ const num = (v: string | null) => (v === null ? null : Number(v));
 
 export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
   const v = (await db.query<{ id: string; property_id: string; visited_on: string; technician: string | null; outcome: string; notes_status: 'draft' | 'approved'; approved_at: string | null;
-    client_summary: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null; doc_number: string | null }>(
-    `SELECT v.id, v.property_id, v.visited_on::text, v.technician, v.outcome, v.notes_status, v.approved_at::text, v.client_summary, v.salesforce_case, v.salesforce_work_order, v.notes,
+    client_summary: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null; doc_number: string | null; document_id: string | null }>(
+    `SELECT v.id, v.property_id, v.visited_on::text, v.technician, v.outcome, v.notes_status, v.approved_at::text, v.client_summary, v.salesforce_case, v.salesforce_work_order, v.notes, v.document_id,
             (SELECT d.number FROM document d WHERE d.id=v.document_id) doc_number
        FROM visit v WHERE v.id=$1`, [visitId])).rows[0];
   if (!v) throw new CloseoutError('Unknown visit.');
@@ -87,7 +87,7 @@ export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
     .map((x) => ({ id: x.id, endpointId: x.endpoint_id, filename: x.filename, caption: x.caption, includeInClient: x.include_in_client }));
   return {
     visit: { id: v.id, visitedOn: v.visited_on, technician: v.technician, outcome: v.outcome, status: v.notes_status, approvedAt: v.approved_at, summary: v.client_summary,
-      salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, documentNumber: v.doc_number, notes: v.notes },
+      salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, documentNumber: v.doc_number, documentId: v.document_id, notes: v.notes },
     property: { id: p.id, name: p.name, classId: p.class_id, address: p.address, city: p.city, state: p.state, zip: p.zip },
     contact: { name: c?.name ?? null, phone: c?.phone ?? null, email: c?.email ?? null },
     code: inv.code, chargeCode: inv.chargeCode, units, counts: countIssues(units), photos,

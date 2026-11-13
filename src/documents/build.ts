@@ -94,9 +94,9 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
   await db.transaction(async (tx) => {
     const number = await nextDocumentNumber(tx, inv.code, input.createdOn);
     const doc = (await one<{ id: string }>(tx,
-      `INSERT INTO document (type,property_id,number,title,acts_as,salesforce_case,salesforce_work_order,created_by,charge_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [input.type, input.propertyId, number, input.title ?? null, input.actsAs ?? null, input.salesforceCase ?? null, input.salesforceWorkOrder ?? null, input.createdBy ?? null, input.chargeCode ?? inv.chargeCode]))!.id;
+      `INSERT INTO document (type,property_id,number,title,acts_as,salesforce_case,salesforce_work_order,created_by,charge_code,created_on)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [input.type, input.propertyId, number, input.title ?? null, input.actsAs ?? null, input.salesforceCase ?? null, input.salesforceWorkOrder ?? null, input.createdBy ?? null, input.chargeCode ?? inv.chargeCode, input.createdOn]))!.id;
     const ver = (await one<{ id: string }>(tx, `INSERT INTO document_version (document_id,version) VALUES ($1,1) RETURNING id`, [doc]))!.id;
 
     if (input.fromAuditBatch && input.type !== 'RFM') {

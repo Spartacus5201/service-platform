@@ -1,0 +1,50 @@
+import type { ReactNode } from 'react';
+import { LIMITS, queueTotal, type Queues } from '@/src/queries/today';
+import { Badge } from './ui';
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const Age = ({ d, limit }: { d: number; limit?: number }) => <Badge tone={limit !== undefined && d >= limit ? 'warn' : 'gray'}>{d === 0 ? 'today' : `${d}d`}</Badge>;
+
+function Queue({ title, hint, children, n }: { title: string; hint: string; n: number; children: ReactNode }) {
+  if (!n) return null;
+  return (<div className="queue"><h3>{title} <span className="small">({n})</span></h3><p className="small" style={{ marginTop: 0 }}>{hint}</p><ul>{children}</ul></div>);
+}
+
+export function Today({ q }: { q: Queues }) {
+  return (
+    <section className="card" style={{ marginBottom: '1.25rem' }}>
+      <h2 style={{ marginTop: 0 }}>Today</h2>
+      {!queueTotal(q) && <p className="small">Nothing is waiting on anyone.</p>}
+      <Queue title="Units with no WA yet" hint="Flagged by the latest audit and not on any WA, Proposal or RFM." n={q.needsDocument.length}>
+        {q.needsDocument.map((x) => <li key={x.batchId}><a href={`/properties/${x.propertyId}/audits/${x.batchId}`}>{x.property}</a>: {plural(x.count, 'unit')} (audit {x.auditedOn}) <Age d={x.days} /></li>)}
+      </Queue>
+      <Queue title="Revisit needed" hint="The technician could not get access or could not finish." n={q.revisit.length}>
+        {q.revisit.map((x, i) => <li key={i}><a href={`/visits/${x.visitId}`}>{x.property}</a>: {x.unit} {x.service} ({x.result.replaceAll('_', ' ')}) <Age d={x.days} /></li>)}
+      </Queue>
+      <Queue title="Still failing after service" hint="An audit taken after the visit still flags the unit." n={q.failed.length}>
+        {q.failed.map((x, i) => <li key={i}><a href={`/visits/${x.visitId}`}>{x.property}</a>: {x.unit} {x.service}: {x.evidence} <Age d={x.days} /></li>)}
+      </Queue>
+      <Queue title="Issued documents with units not yet serviced" hint="No visit recorded for these units since the document." n={q.notVisited.length}>
+        {q.notVisited.map((x) => <li key={x.documentId}><a href={`/documents/${x.documentId}`}>{x.property} {x.number}</a>: {plural(x.units, 'unit')} <Age d={x.days} limit={LIMITS.docVisit} /></li>)}
+      </Queue>
+      <Queue title="Service notes waiting for approval" hint="Review the client wording and approve." n={q.draftNotes.length}>
+        {q.draftNotes.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.units, 'unit')} <Age d={x.days} limit={LIMITS.notesApproval} /></li>)}
+      </Queue>
+      <Queue title="Approved, not yet sent for invoicing" hint="Send the invoicing sheet to admin." n={q.uninvoiced.length}>
+        {q.uninvoiced.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.units, 'unit')} <Age d={x.days} /></li>)}
+      </Queue>
+      <Queue title="Sent for invoicing, no invoice number yet" hint="Record the admin's invoice number when it comes back." n={q.invoiceNoRef.length}>
+        {q.invoiceNoRef.map((x, i) => <li key={i}>{x.visitId ? <a href={`/visits/${x.visitId}`}>{x.property}</a> : x.property}: sent {x.submittedOn} <Age d={x.days} limit={LIMITS.invoiceRef} /></li>)}
+      </Queue>
+      <Queue title="ID updates not yet sent" hint="Download the ID update workbook and send it to billing." n={q.idUpdates.length}>
+        {q.idUpdates.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}/ids`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.rows, 'change')} <Age d={x.days} /></li>)}
+      </Queue>
+      <Queue title={`ID updates sent, not confirmed after ${LIMITS.idConfirm} days`} hint="No audit or check-in shows the new ID yet. Check with billing." n={q.idUnconfirmed.length}>
+        {q.idUnconfirmed.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}/ids`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.rows, 'change')} <Age d={x.days} limit={LIMITS.idConfirm} /></li>)}
+      </Queue>
+      <Queue title={`Drafts older than ${LIMITS.staleDraft} days`} hint="Issue them or delete them." n={q.staleDrafts.length}>
+        {q.staleDrafts.map((x) => <li key={x.documentId}><a href={`/documents/${x.documentId}`}>{x.property} {x.type} {x.number}</a> <Age d={x.days} limit={LIMITS.staleDraft} /></li>)}
+      </Queue>
+    </section>
+  );
+}

@@ -71,13 +71,13 @@ export async function correctPartId(db: Db, eventId: string, newHardwareId: stri
   });
 }
 
-export interface VisitPatch { visitedOn?: string; technician?: string | null; outcome?: Outcome; salesforceCase?: string | null; salesforceWorkOrder?: string | null; notes?: string | null }
+export interface VisitPatch { visitedOn?: string; technician?: string | null; outcome?: Outcome; salesforceCase?: string | null; salesforceWorkOrder?: string | null; notes?: string | null; documentId?: string | null }
 
 /** Change the visit itself. A new date or outcome changes warranty coverage, so coverage is recalculated for its events, which is refused once any are invoiced. */
 export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, reason: string, userId: string | null): Promise<void> {
   const r = need(reason);
-  const v = await one<{ id: string; property_id: string; visited_on: string; outcome: Outcome; technician: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null }>(db,
-    `SELECT id, property_id, visited_on::text, outcome, technician, salesforce_case, salesforce_work_order, notes FROM visit WHERE id=$1`, [visitId]);
+  const v = await one<{ id: string; property_id: string; visited_on: string; outcome: Outcome; technician: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null; document_id: string | null }>(db,
+    `SELECT id, property_id, visited_on::text, outcome, technician, salesforce_case, salesforce_work_order, notes, document_id FROM visit WHERE id=$1`, [visitId]);
   if (!v) throw new ServiceError('Unknown visit.');
   const next = {
     visitedOn: patch.visitedOn ?? v.visited_on, outcome: patch.outcome ?? v.outcome,
@@ -85,7 +85,12 @@ export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, r
     salesforceCase: 'salesforceCase' in patch ? patch.salesforceCase ?? null : v.salesforce_case,
     salesforceWorkOrder: 'salesforceWorkOrder' in patch ? patch.salesforceWorkOrder ?? null : v.salesforce_work_order,
     notes: 'notes' in patch ? patch.notes ?? null : v.notes,
+    documentId: 'documentId' in patch ? patch.documentId ?? null : v.document_id,
   };
+  if (next.documentId && next.documentId !== v.document_id) {
+    const d = await one<{ property_id: string }>(db, `SELECT property_id FROM document WHERE id=$1`, [next.documentId]);
+    if (!d || d.property_id !== v.property_id) throw new ServiceError('That work authorization belongs to another property.');
+  }
   const coverageChanges = next.visitedOn !== v.visited_on || next.outcome !== v.outcome;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(next.visitedOn)) throw new ServiceError('Enter the date as YYYY-MM-DD.');
   const events = (await db.query<{ id: string; endpoint_id: string; action: string }>(`SELECT se.id, se.endpoint_id, se.action FROM service_event se WHERE se.visit_id=$1 AND ${LIVE_EVENT}`, [visitId])).rows;
@@ -95,8 +100,8 @@ export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, r
   }
   const { warranty } = await loadSettings(db);
   await db.transaction(async (tx) => {
-    await tx.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7 WHERE id=$1`,
-      [visitId, next.visitedOn, next.outcome, next.technician, next.salesforceCase, next.salesforceWorkOrder, next.notes]);
+    await tx.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7, document_id=$8 WHERE id=$1`,
+      [visitId, next.visitedOn, next.outcome, next.technician, next.salesforceCase, next.salesforceWorkOrder, next.notes, next.documentId]);
     if (coverageChanges) {
       const prop = (await tx.query<{ installed_by_us: boolean; install_completed_on: string | null }>(`SELECT installed_by_us, install_completed_on::text FROM property WHERE id=$1`, [v.property_id])).rows[0];
       const touched = next.outcome === 'completed';
@@ -117,7 +122,7 @@ export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, r
       }
     }
     await reopenNotes(tx, visitId);
-    await log(tx, userId, 'visit_corrected', 'visit', visitId, { visit_id: visitId, reason: r, from: { visitedOn: v.visited_on, outcome: v.outcome, technician: v.technician, salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, notes: v.notes }, to: next });
+    await log(tx, userId, 'visit_corrected', 'visit', visitId, { visit_id: visitId, reason: r, from: { visitedOn: v.visited_on, outcome: v.outcome, technician: v.technician, salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, notes: v.notes, documentId: v.document_id }, to: next });
   });
 }
 

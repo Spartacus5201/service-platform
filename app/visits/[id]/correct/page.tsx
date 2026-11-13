@@ -15,6 +15,7 @@ export default async function CorrectVisit({ params, searchParams }: { params: P
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();
   const invoiced = new Set((await db.query<{ service_event_id: string }>(`SELECT il.service_event_id FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows.map((r) => r.service_event_id));
   const v = c.visit;
+  const docs = (await db.query<{ id: string; number: string; type: string }>(`SELECT id, number, type FROM document WHERE property_id=$1 AND type IN ('WA','Proposal') ORDER BY created_on DESC`, [c.property.id])).rows;
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a> / <a href={`/visits/${id}`}>Service notes {v.visitedOn}</a> / Correct</div>
@@ -31,6 +32,7 @@ export default async function CorrectVisit({ params, searchParams }: { params: P
             <select id="outcome" name="outcome" defaultValue={v.outcome}><option value="completed">Completed</option><option value="unable_to_access">Unable to access</option><option value="unable_to_complete">Unable to complete</option></select></div>
           <div className="field"><label htmlFor="salesforce_case">Salesforce case</label><input id="salesforce_case" name="salesforce_case" defaultValue={v.salesforceCase ?? ''} /></div>
           <div className="field"><label htmlFor="salesforce_work_order">Work order</label><input id="salesforce_work_order" name="salesforce_work_order" defaultValue={v.salesforceWorkOrder ?? ''} /></div>
+          <div className="field"><label htmlFor="document_id">Work authorization</label><select id="document_id" name="document_id" defaultValue={v.documentId ?? ''}><option value="">None</option>{docs.map((d) => <option key={d.id} value={d.id}>{d.type} {d.number}</option>)}</select></div>
         </div>
         <div className="field"><label htmlFor="visit_notes">Overall notes (internal)</label><textarea id="visit_notes" name="visit_notes" rows={2} defaultValue={v.notes ?? ''} /></div>
 

@@ -350,7 +350,7 @@ export async function createCloseoutAction(fd: FormData) {
   let visitId: string;
   try {
     visitId = (await recordVisit(await getDb(), { propertyId, visitedOn: s(fd, 'visited_on') ?? today(), technician: s(fd, 'technician'), outcome: (s(fd, 'outcome') ?? 'completed') as Outcome,
-      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId, events })).visitId;
+      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId, documentId: s(fd, 'document_id'), events })).visitId;
   } catch (e) { if (domainError(e)) redirect(withError(back, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${visitId}`, 'Visit recorded. Review the wording for the client.'));
 }
@@ -387,6 +387,16 @@ export async function sendInvoiceSheetAction(fd: FormData) {
   redirect(withMsg(`/visits/${id}`, 'Recorded as sent to admin.'));
 }
 
+export async function recordInvoiceRefAction(fd: FormData) {
+  const sess = await requireCan('edit_prices');
+  const id = s(fd, 'visit_id')!; const ref = s(fd, 'external_ref');
+  if (!ref) redirect(withError(`/visits/${id}`, 'Enter the invoice number.'));
+  const db = await getDb();
+  await db.query(`UPDATE invoice_submission s SET external_ref=$2 WHERE EXISTS (SELECT 1 FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE il.submission_id=s.id AND se.visit_id=$1) AND COALESCE(trim(s.external_ref),'')=''`, [id, ref]);
+  await db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'invoice_ref_recorded','visit',$2,$3)`, [sess.userId, id, JSON.stringify({ visit_id: id, ref })]);
+  redirect(withMsg(`/visits/${id}`, 'Invoice number recorded.'));
+}
+
 // ---------- corrections ----------
 export async function correctVisitAction(fd: FormData) {
   const sess = await requireCan('edit_documents');
@@ -398,8 +408,8 @@ export async function correctVisitAction(fd: FormData) {
     const c = await closeoutData(db, id);
     const v = c.visit; const done: string[] = [];
     const vp = { visitedOn: s(fd, 'visited_on') ?? v.visitedOn, technician: s(fd, 'technician'), outcome: (s(fd, 'outcome') ?? v.outcome) as Outcome,
-      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes') };
-    if (vp.visitedOn !== v.visitedOn || vp.technician !== v.technician || vp.outcome !== v.outcome || vp.salesforceCase !== v.salesforceCase || vp.salesforceWorkOrder !== v.salesforceWorkOrder || vp.notes !== v.notes) {
+      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), documentId: s(fd, 'document_id') };
+    if (vp.visitedOn !== v.visitedOn || vp.technician !== v.technician || vp.outcome !== v.outcome || vp.salesforceCase !== v.salesforceCase || vp.salesforceWorkOrder !== v.salesforceWorkOrder || vp.notes !== v.notes || vp.documentId !== v.documentId) {
       await correctVisit(db, id, vp, reason, sess.userId); done.push('visit details');
     }
     const locked = new Set((await db.query<{ service_event_id: string }>(`SELECT il.service_event_id FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows.map((r) => r.service_event_id));

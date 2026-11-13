@@ -65,6 +65,13 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
   const prop = await one<{ installed_by_us: boolean; install_completed_on: string | null }>(db,
     `SELECT installed_by_us, install_completed_on::text FROM property WHERE id=$1`, [input.propertyId]);
   if (!prop) throw new ServiceError('Unknown property.');
+  if (input.documentId) {
+    const d = await one<{ property_id: string; salesforce_case: string | null; salesforce_work_order: string | null }>(db,
+      `SELECT property_id, salesforce_case, salesforce_work_order FROM document WHERE id=$1`, [input.documentId]);
+    if (!d || d.property_id !== input.propertyId) throw new ServiceError('That work authorization belongs to another property.');
+    // The visit inherits the WA's Salesforce references unless the report gave its own.
+    input = { ...input, salesforceCase: input.salesforceCase || d.salesforce_case, salesforceWorkOrder: input.salesforceWorkOrder || d.salesforce_work_order };
+  }
 
   const warnings: string[] = [];
   const eventIds: string[] = [];

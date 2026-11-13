@@ -33,8 +33,8 @@ async function check(q: Q, e: EventRow): Promise<UnitVerification> {
   if (e.outcome !== 'completed') return { ...base, status: 'pending', evidence: 'Visit not completed; needs rescheduling.', on: null };
 
   // An audit is conclusive only if its whole window (either date column can be the earlier one) is on or after the visit.
-  const audit = (await q.query<{ audit_result: string; amr_id: string | null; on: string }>(
-    `SELECT r.audit_result, r.amr_id, GREATEST(r.read_date_1, r.read_date_2, i.imported_at::date)::text "on"
+  const audit = (await q.query<{ audit_result: string; amr_id: string | null; on: string; ended: string }>(
+    `SELECT r.audit_result, r.amr_id, GREATEST(r.read_date_1, r.read_date_2, i.imported_at::date)::text "on", GREATEST(r.read_date_1, r.read_date_2)::text ended
        FROM audit_reading r JOIN import_batch i ON i.id=r.import_batch_id
       WHERE r.endpoint_id=$1 AND LEAST(r.read_date_1, r.read_date_2) >= $2::date ORDER BY GREATEST(r.read_date_1, r.read_date_2) DESC, i.imported_at DESC LIMIT 1`, [e.endpoint_id, e.visited_on])).rows[0];
   const txRelated = e.replaced_tx || TX_ISSUES.includes((e.issue_code ?? '').toUpperCase());
@@ -49,11 +49,11 @@ async function check(q: Q, e: EventRow): Promise<UnitVerification> {
   if (useAudit && audit) {
     const code = (audit.audit_result ?? '').trim().toUpperCase();
     if (e.replaced_tx && e.old_mdid && audit.amr_id === e.old_mdid && audit.amr_id !== e.new_mdid)
-      return { ...base, status: 'failed', evidence: `Audit ending ${audit.on} still lists the old ID ${e.old_mdid}. The billing system or read file needs the new ID ${e.new_mdid ?? ''}.`, on: audit.on };
-    if (code === 'OK') return { ...base, status: 'verified', evidence: `Audit ending ${audit.on}: OK.`, on: audit.on };
-    if (code === 'NI' && e.vacant) return { ...base, status: 'verified', evidence: `Audit ending ${audit.on}: no increment on a vacant unit.`, on: audit.on };
-    if (EQUIPMENT_CODES.includes(code)) return { ...base, status: 'failed', evidence: `Audit ending ${audit.on} still reports ${code}.`, on: audit.on };
-    return { ...base, status: 'pending', evidence: `Audit ending ${audit.on} reports ${code || 'no result'}; property to investigate usage.`, on: audit.on };
+      return { ...base, status: 'failed', evidence: `Audit ending ${audit.ended} still lists the old ID ${e.old_mdid}. The billing system or read file needs the new ID ${e.new_mdid ?? ''}.`, on: audit.on };
+    if (code === 'OK') return { ...base, status: 'verified', evidence: `Audit ending ${audit.ended}: OK.`, on: audit.on };
+    if (code === 'NI' && e.vacant) return { ...base, status: 'verified', evidence: `Audit ending ${audit.ended}: no increment on a vacant unit.`, on: audit.on };
+    if (EQUIPMENT_CODES.includes(code)) return { ...base, status: 'failed', evidence: `Audit ending ${audit.ended} still reports ${code}.`, on: audit.on };
+    return { ...base, status: 'pending', evidence: `Audit ending ${audit.ended} reports ${code || 'no result'}; property to investigate usage.`, on: audit.on };
   }
   if (evCheck) return { ...base, status: 'verified', evidence: `Transmitter checked in ${evCheck.on}.`, on: evCheck.on };
   return { ...base, status: 'pending', evidence: 'No audit or check-in since the visit yet.', on: null };

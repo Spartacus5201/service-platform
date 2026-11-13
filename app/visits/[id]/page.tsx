@@ -6,7 +6,7 @@ import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
 import { verifyVisit } from '@/src/service/verify';
 import { RESULT_LABEL } from '@/src/service/phrases';
-import { addPhotoAction, approveCloseoutAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
+import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
 import { Badge, Flash, one, type SP } from '../../ui';
 
 export default async function VisitCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
@@ -15,7 +15,9 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const db = await getDb();
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();
   const approved = c.visit.status === 'approved';
-  const invoiced = !!(await db.query(`SELECT 1 FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1 LIMIT 1`, [id])).rows.length;
+  const subs = (await db.query<{ ref: string | null }>(`SELECT DISTINCT s.id, s.external_ref ref FROM invoice_submission s JOIN invoice_line il ON il.submission_id=s.id JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows;
+  const invoiced = subs.length > 0;
+  const invoiceRef = subs.map((x) => x.ref).filter(Boolean).join(', ');
   const canInvoice = can(s.role, 'edit_prices');
   const log = await corrections(db, id);
   const checks = await verifyVisit(db, id);
@@ -25,7 +27,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
       <h1>Service notes</h1>
       <p className="sub">{c.visit.visitedOn} · {c.visit.technician ?? 'no technician'} · {c.property.name} · code {c.code}, charge {c.chargeCode}{c.visit.documentNumber ? ` · WA ${c.visit.documentNumber}` : ''}</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
-      <p>{approved ? <Badge tone="ok">approved</Badge> : <Badge tone="warn">draft</Badge>} {invoiced && <Badge tone="info">sent to admin</Badge>}
+      <p>{approved ? <Badge tone="ok">approved</Badge> : <Badge tone="warn">draft</Badge>} {invoiced && <Badge tone="info">sent to admin</Badge>}{invoiceRef && <> <Badge tone="ok">invoice {invoiceRef}</Badge></>}
         {' '}NI {c.counts.NI} · NT {c.counts.NT} · INT {c.counts.INT} · High/Low {c.counts.HIGHLOW} · Other {c.counts.other} · Total {c.counts.total}</p>
 
       <form action={saveCloseoutAction}>
@@ -95,6 +97,13 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
           <input type="hidden" name="visit_id" value={id} />
           <div className="field"><label htmlFor="external_ref">Admin reference (ticket or invoice no.)</label><input id="external_ref" name="external_ref" /></div>
           <div className="actions"><button type="submit">Record as sent to admin</button></div>
+        </form>
+      )}
+      {canInvoice && invoiced && !invoiceRef && (
+        <form action={recordInvoiceRefAction} className="row" style={{ marginTop: '1rem' }}>
+          <input type="hidden" name="visit_id" value={id} />
+          <div className="field"><label htmlFor="inv_ref">Invoice number from admin</label><input id="inv_ref" name="external_ref" required /></div>
+          <div className="actions"><button type="submit">Record invoice number</button></div>
         </form>
       )}
     </>

@@ -5,6 +5,7 @@ import { today } from '@/src/server/dates';
 import { can } from '@/src/auth/auth';
 import { auditLines } from '@/src/queries/audit';
 import { ACTIONS } from '@/src/review/overrides';
+import { stagedLines, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { createDocumentAction, overrideAction } from '../../../../actions';
 import { Badge, Flash, actionTone, warrantyTone, one, type SP } from '../../../../ui';
 
@@ -22,6 +23,10 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
   const count = (a: string) => all.filter((l) => l.recommendation.action === a).length;
   const canDocs = can(s.role, 'edit_documents');
   const base = `/properties/${id}/audits/${batchId}`;
+  const staged = await stagedLines(db, batchId, today());
+  const stage = new Map(staged.map((l) => [l.readingId, l]));
+  const sc = countStages(staged);
+  const stageTone = (x: UnitStage) => (x === 'needs_document' || x === 'revisit' || x === 'not_fixed' ? 'warn' : x === 'visited' ? 'ok' : 'info');
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${id}`}>{b.name}</a> / Audit review</div>
@@ -36,6 +41,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
         <div className="stat"><b>{count('Requested by property')}</b><span>Requested</span></div>
         <div className="stat"><b>{count('Unrecognized')}</b><span>Unrecognized</span></div>
       </div>
+      {!!staged.length && <p className="small">Where the flagged units stand: {(Object.keys(sc) as UnitStage[]).filter((k) => sc[k]).map((k) => `${STAGE_LABEL[k]} ${sc[k]}`).join(' · ')}</p>}
       {all.some((l) => l.occupied === null) && <div className="flash">Occupancy is unknown for some units, so they are treated as occupied. Import an occupancy report to refine this.</div>}
       <div className="filters">
         <a className={showAll ? '' : 'on'} href={base}>Needs action ({actionable.length})</a>
@@ -47,7 +53,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
       </div>
       {all.some((l) => l.override) && <p className="small">{all.filter((l) => l.override).length} row(s) changed by a reviewer, marked <Badge tone="info">edited</Badge>.</p>}
       <div className="tablewrap"><table>
-        <thead><tr><th>Unit</th><th>Svc</th><th>Result</th><th>Recommendation</th><th>Why</th><th>Warranty</th>{canDocs && <th></th>}</tr></thead>
+        <thead><tr><th>Unit</th><th>Svc</th><th>Result</th><th>Recommendation</th><th>Why</th><th>Warranty</th><th>Status</th>{canDocs && <th></th>}</tr></thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.readingId} className={l.recommendation.action === 'No action' ? 'muted' : ''}>
@@ -60,6 +66,11 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
                   <Badge tone={warrantyTone(l.coverage.labor.status)}>labor {l.coverage.labor.status}</Badge>{' '}
                   <Badge tone={warrantyTone(l.coverage.part.status)}>part {l.coverage.part.status}</Badge>
                 </>)}</td>
+              <td className="small">{(() => { const g = stage.get(l.readingId); if (!g) return null; return (<>
+                <Badge tone={stageTone(g.stage)}>{STAGE_LABEL[g.stage]}</Badge>
+                {g.doc && (g.stage === 'on_document') && <> <a href={`/documents/${g.doc.id}`}>{g.doc.number}</a>{g.doc.issued ? '' : ' (draft)'}</>}
+                {g.lastVisit && g.stage !== 'on_document' && <> <a href={`/visits/${g.lastVisit.visitId}`}>visit {g.lastVisit.visitedOn}</a></>}
+              </>); })()}</td>
               {canDocs && (
                 <td>
                   <details>
@@ -80,7 +91,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
                 </td>)}
             </tr>
           ))}
-          {!lines.length && <tr><td colSpan={7} className="small">Nothing needs action in this report.</td></tr>}
+          {!lines.length && <tr><td colSpan={8} className="small">Nothing needs action in this report.</td></tr>}
         </tbody>
       </table></div>
 

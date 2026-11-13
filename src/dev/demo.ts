@@ -53,7 +53,7 @@ export async function buildDemo(db: Db): Promise<{ properties: number }> {
       await issueVersion(db, wa.versionId, null, '2026-11-02');
       const a = units[0], b = units[1];
       if (a && b) {
-        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-05', technician: 'Casey Tech', outcome: 'completed', salesforceCase: '00812345', salesforceWorkOrder: '00045678', documentId: null,
+        const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-05', technician: 'Casey Tech', outcome: 'completed', salesforceCase: '00812345', salesforceWorkOrder: '00045678', documentId: wa.documentId,
           events: [ev(a.endpointId, a.code, 'MR-NEW-0001'), ev(b.endpointId, b.code, 'MR-NEW-0002'), ...(units[2] ? [ev(units[2].endpointId, units[2].code)] : [])] });
         await approveCloseout(db, v.visitId, null);
         await sendInvoiceSheet(db, v.visitId, null, '2026-11-06', 'ADM-2026-114');

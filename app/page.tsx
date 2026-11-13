@@ -4,6 +4,8 @@ import { can } from '@/src/auth/auth';
 import { listProperties } from '@/src/server/queries';
 import { createProperty } from './actions';
 import { todayQueues } from '@/src/queries/today';
+import { today } from '@/src/server/dates';
+import { Today } from './today';
 import { Badge, Flash, one, type SP } from './ui';
 
 export default async function Home({ searchParams }: { searchParams: SP }) {
@@ -12,24 +14,13 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
   const db = await getDb();
   const props = await listProperties(db);
   const showToday = can(s.role, 'edit_documents');
-  const q = showToday ? await todayQueues(db, new Date().toISOString().slice(0, 10)) : null;
-  const total = q ? q.units.length + q.draftNotes.length + q.idUpdates.length + q.uninvoiced.length + q.failed.length : 0;
+  const q = showToday ? await todayQueues(db, today()) : null;
   return (
     <>
       <h1>{q ? 'Home' : 'Properties'}</h1>
       <p className="sub">Pick a property to import reports, review an audit, or look up a unit.</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
-      {q && (
-        <section className="card" style={{ marginBottom: '1.25rem' }}>
-          <h2 style={{ marginTop: 0 }}>Today</h2>
-          {!total && <p className="small">Nothing is waiting on anyone.</p>}
-          {!!q.units.length && <><h3>Units needing action</h3><ul>{q.units.map((x) => <li key={x.propertyId}><a href={`/properties/${x.propertyId}/audits/${x.batchId}`}>{x.property}</a>: {x.count} unit{x.count === 1 ? '' : 's'} (audit {x.auditedOn})</li>)}</ul></>}
-          {!!q.draftNotes.length && <><h3>Service notes waiting for approval</h3><ul>{q.draftNotes.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {x.units} unit{x.units === 1 ? '' : 's'}</li>)}</ul></>}
-          {!!q.uninvoiced.length && <><h3>Approved visits not yet sent for invoicing</h3><ul>{q.uninvoiced.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {x.units} unit{x.units === 1 ? '' : 's'}</li>)}</ul></>}
-          {!!q.idUpdates.length && <><h3>ID updates not yet sent</h3><ul>{q.idUpdates.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}/ids`}>{x.property}</a>: visit {x.visitedOn}, {x.rows} change{x.rows === 1 ? '' : 's'}</li>)}</ul></>}
-          {!!q.failed.length && <><h3>Follow-up: the fix did not hold</h3><ul>{q.failed.map((x, i) => <li key={i}><a href={`/visits/${x.visitId}`}>{x.property}</a>: {x.unit} {x.service}: {x.evidence}</li>)}</ul></>}
-        </section>
-      )}
+      {q && <Today q={q} />}
       <h2>Properties</h2>
       <div className="tablewrap">
         <table>

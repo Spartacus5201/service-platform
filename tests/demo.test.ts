@@ -12,7 +12,7 @@ describe('demo dataset and Today queues', () => {
     expect(q.uninvoiced.map((x) => x.property)).toContain('Cedar Court');
     expect(q.idUpdates.map((x) => x.property)).toContain('Cedar Court');
     expect(q.failed.map((x) => x.property)).toContain('Maple Ridge Apartments');
-    expect(q.units.length).toBeGreaterThan(0);
+    expect(q.needsDocument.length).toBeGreaterThan(0);
     // The fully worked property is invoiced and its ID update is no longer pending.
     expect(q.uninvoiced.map((x) => x.property)).not.toContain('Maple Ridge Apartments');
     expect(q.idUpdates.map((x) => x.property)).not.toContain('Maple Ridge Apartments');
