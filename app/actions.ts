@@ -25,6 +25,7 @@ import { addUnitForIssue, dismissIssue, IssueError } from '@/src/import/issues';
 import { createJob, updateJob, closeJob, reopenJob, attachAudit, JobError, type JobSource } from '@/src/jobs/jobs';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
+import { createUser } from '@/src/auth/auth';
 
 const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
 const n = (fd: FormData, k: string): number | null => { const v = s(fd, k); if (v === null) return null; const x = Number(v.replace(/[$,]/g, '')); return Number.isFinite(x) ? x : null; };
@@ -38,6 +39,18 @@ export async function login(_: FormState, fd: FormData): Promise<FormState> {
   if (!sess) return { error: 'Email or password is incorrect.' };
   await startSession(sess.userId);
   redirect('/');
+}
+
+export async function firstAdminAction(fd: FormData) {
+  const db = await getDb();
+  if (Number((await db.query<{ n: string }>(`SELECT count(*) n FROM app_user`)).rows[0].n) > 0) redirect('/login');
+  const password = String(fd.get('password') ?? '');
+  if (password !== String(fd.get('again') ?? '')) redirect(withError('/setup', 'The passwords do not match.'));
+  let id: string;
+  try { id = await createUser(db, { email: s(fd, 'email') ?? '', name: s(fd, 'name') ?? 'Administrator', role: 'admin', password, mustChangePassword: false }); }
+  catch (e) { redirect(withError('/setup', msgOf(e))); }
+  await startSession(id);
+  redirect(withMsg('/', 'Administrator created. Add your team under Admin.'));
 }
 
 export async function logout() { await endSession(); redirect('/login'); }

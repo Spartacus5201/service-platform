@@ -17,7 +17,8 @@
     "sample:pdf": "tsx scripts/sample-pdf.ts",
     "check-login": "tsx scripts/check-login.ts",
     "demo": "tsx scripts/demo.ts",
-    "demo:start": "node scripts/demo-start.mjs"
+    "demo:start": "node scripts/demo-start.mjs",
+    "local": "node scripts/start-local.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",

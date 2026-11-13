@@ -1,0 +1,12 @@
+node_modules
+.next
+.pgdata
+.pgdata-demo
+backups
+data
+corpus/real-*
+credentials*
+*.xlsx
+!tests/fixtures/*.xlsx
+.env
+.git

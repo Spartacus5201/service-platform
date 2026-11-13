@@ -7,6 +7,7 @@ Docs for the team and IT: `docs/ROADMAP.md`, `docs/SERVICE-NOTES.md`, `docs/IT-Q
 Spec: "Service Platform — Data Model & Screen-Flow Spec" (Claude Docs).
 
 ## Run it
+To just use it: double-click `start.cmd` (Windows) or run `./start.sh`, or `docker compose up -d` on a server. See docs/RUNNING.md. For development:
 
 ```bash
 npm install

@@ -11,3 +11,4 @@ corpus/real-*/
 !corpus/example-*/raw/*.xlsx
 tsconfig.tsbuildinfo
 .pgdata-demo/
+backups/

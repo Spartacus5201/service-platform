@@ -1,0 +1,12 @@
+# docker compose up -d   ->   http://<homelab>:3000   (first visit asks you to create the administrator)
+services:
+  service-platform:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data          # database in ./data/db, daily backups in ./data/backups
+    environment:
+      BACKUP_KEEP: "14"
+      # COOKIE_SECURE: "true"   # set when served over HTTPS (reverse proxy)
