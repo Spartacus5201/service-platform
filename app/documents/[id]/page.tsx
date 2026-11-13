@@ -28,6 +28,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   if (tech && !versions.some((x) => x.status === 'issued')) notFound();
   const qs = canPrice ? await quoteStatus(db, id, today()) : 'not_applicable';
   const base = `/documents/${id}`;
+  const linked = (await db.query<{ id: string; visited_on: string }>(`SELECT id, visited_on::text FROM visit WHERE document_id=$1 ORDER BY visited_on`, [id])).rows;
   const isDraft = v.status === 'draft';
 
   let lines: { id: string; building: string | null; unit: string | null; address: string | null; issue_code: string | null; description: string; quantity: string; unit_price: string | null; labor_price: string | null; labor_covered: boolean; part_covered: boolean; include: boolean }[] = [];
@@ -54,6 +55,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
         {qs === 'expired' && <Badge tone="bad">quote expired</Badge>}{qs === 'reconfirmed' && <Badge tone="info">pricing reconfirmed {d.price_reconfirmed_on}</Badge>}
         {d.salesforce_case ? ` · Case ${d.salesforce_case}` : ''}{d.salesforce_work_order ? ` · WO ${d.salesforce_work_order}` : ''}
       </p>
+      {canEdit && linked.length > 0 && <p className="small">Visits on this {d.type}: {linked.map((x, k) => <span key={x.id}>{k ? ', ' : ''}<a href={`/visits/${x.id}`}>{x.visited_on}</a></span>)} · <a href={`/aar?document=${id}`} target="_blank">After Action Report PDF</a></p>}
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
       {versions.length > 1 && !tech && (
         <div className="filters">{versions.map((x) => <a key={x.id} className={x.id === v.id ? 'on' : ''} href={`${base}?v=${x.version}`}>v{x.version} {x.status}</a>)}</div>

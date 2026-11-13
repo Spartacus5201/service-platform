@@ -4,6 +4,7 @@ import type { Db } from '../db';
 import { followUps } from '../service/verify';
 import { LIVE_EVENT } from '../service/record';
 import { stagedLines, latestAuditBatch, countStages } from '../service/unitstatus';
+import { postAuditsDue } from '../service/aar';
 
 /** Days an item may wait before it is shown as overdue. */
 export const LIMITS = { idConfirm: 14, staleDraft: 30, notesApproval: 3, invoiceRef: 14, docVisit: 30 };
@@ -20,12 +21,13 @@ export interface Queues {
   invoiceNoRef: (Item & { visitId: string | null; submittedOn: string })[];
   staleDrafts: (Item & { documentId: string; number: string; type: string })[];
   failed: (Item & { visitId: string; unit: string; service: string; evidence: string })[];
+  postAudit: (Item & { visitId: string; visitedOn: string; dueOn: string; waiting: number })[];
 }
 
 const days = (from: string, to: string) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
 
 export async function todayQueues(db: Db, today: string): Promise<Queues> {
-  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [] };
+  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [], postAudit: [] };
   const props = (await db.query<{ id: string; name: string }>(`SELECT id, name FROM property ORDER BY name`)).rows;
   for (const p of props) {
     const b = await latestAuditBatch(db, p.id);
@@ -79,6 +81,7 @@ export async function todayQueues(db: Db, today: string): Promise<Queues> {
       WHERE NOT EXISTS (SELECT 1 FROM document_version v WHERE v.document_id=d.id AND v.status='issued') ORDER BY d.created_on`)).rows
     .map((r) => ({ propertyId: r.pid, property: r.name, documentId: r.id, number: r.number, type: r.type, days: days(r.on, today) }))
     .filter((x) => x.days >= LIMITS.staleDraft);
+  q.postAudit = (await postAuditsDue(db, today)).map((x) => ({ ...x, days: days(x.dueOn, today) }));
   return q;
 }
 

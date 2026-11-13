@@ -137,3 +137,49 @@ export async function renderInvoicePdf(s: InvoiceSheet): Promise<Uint8Array> {
   footer(doc, `INTERNAL USE ONLY  |  ${c.property.name}  |  ${dateUs(c.visit.visitedOn)}`, left, width);
   doc.end(); return done;
 }
+
+/** After Action Report: before / work / after for every serviced unit, with a summary and the open items. No prices. */
+export async function renderAarPdf(a: import('./aar').Aar, asOf: string): Promise<Uint8Array> {
+  const { AAR_LABEL } = await import('./aar');
+  const title = `After Action Report ${a.property.name}${a.document ? ` ${a.document.number}` : ` ${a.visits[0]?.visitedOn ?? ''}`}`;
+  const { doc, done } = start(title, 'landscape');
+  const left = 36; const width = doc.page.width - 72; const bottom = () => doc.page.height - 40;
+  doc.rect(left, 30, width, 20).fill(RED);
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text('After Action Report', left, 35, { width, align: 'center' });
+  const y0 = 58; const col = width / 3;
+  facts(doc, [['Property', a.property.name], ['Address', a.property.address ?? ''], ['Property ID', a.property.classId]], left, y0, col);
+  facts(doc, [['Work Auth #', a.document?.number ?? '-'], ['Visits', a.visits.map((v) => dateUs(v.visitedOn)).join(', ')], ['Technician', [...new Set(a.visits.map((v) => v.technician).filter(Boolean))].join(', ')]], left + col, y0, col);
+  facts(doc, [['Report date', dateUs(asOf)], ['Post-audit due', a.postAuditDue ? dateUs(a.postAuditDue) : '-']], left + 2 * col, y0, col, 90);
+  doc.y = y0 + 50;
+  const s = a.summary;
+  const line = `${s.units} unit(s) serviced. Fixed ${s.fixed} · Still failing ${s.still_failing} · New problem ${s.new_problem} · Revisit needed ${s.revisit} · Awaiting audit ${s.awaiting_audit}. Fixed on the first visit: ${s.units ? Math.round((100 * s.firstVisitFixed) / s.units) : 0}%.`;
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(t(line), left, doc.y, { width }); doc.moveDown(0.6);
+
+  const cols: [string, number][] = [['Bldg', 34], ['Unit', 46], ['Svc', 30], ['Visit', 54], ['Before', 70], ['Work done', 150], ['New TX ID', 66], ['After', 0], ['Outcome', 76]];
+  cols[7][1] = width - cols.reduce((x, c, i) => (i === 7 ? x : x + c[1]), 0);
+  const xs: number[] = []; cols.reduce((x, cc) => { xs.push(x); return x + cc[1]; }, left);
+  const head = () => { const y = doc.y; doc.rect(left, y - 2, width, 14).fill(RED); doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7.5);
+    cols.forEach((cc, i) => doc.text(cc[0], xs[i] + 2, y + 1, { width: cc[1] - 4, lineBreak: false })); doc.y = y + 15; };
+  head();
+  for (const r of a.rows) {
+    const cells = [r.building, r.unit, r.service, dateUs(r.visitedOn), `${r.before.code ?? '-'}${r.before.auditEnded ? ` (to ${dateUs(r.before.auditEnded)})` : ''}`, r.work, r.newTxId ?? '', r.after.evidence, AAR_LABEL[r.outcome]].map((x) => t(x));
+    doc.font('Helvetica').fontSize(7.5);
+    const h = Math.max(...cells.map((x, i) => doc.heightOfString(x, { width: cols[i][1] - 4 }))) + 4;
+    if (doc.y + h > bottom()) { doc.addPage(); head(); }
+    const y = doc.y;
+    cells.forEach((x, i) => doc.font(i === 8 ? 'Helvetica-Bold' : 'Helvetica').fillColor(i === 8 && r.outcome !== 'fixed' ? RED : INK).text(x, xs[i] + 2, y, { width: cols[i][1] - 4 }));
+    doc.moveTo(left, y + h - 1).lineTo(left + width, y + h - 1).strokeColor(LINE).lineWidth(0.3).stroke(); doc.y = y + h;
+  }
+  if (!a.rows.length) doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('No units were serviced.', left, doc.y);
+
+  const open = a.rows.filter((r) => r.outcome !== 'fixed');
+  if (open.length) {
+    if (doc.y + 60 > bottom()) doc.addPage();
+    doc.moveDown(0.8); doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text('Open items and next steps', left, doc.y);
+    const next: Record<string, string> = { still_failing: 'Schedule a return visit.', new_problem: 'Review the new audit code and schedule service.', revisit: 'Arrange access and reschedule.', awaiting_audit: 'Re-check after the next audit.' };
+    doc.font('Helvetica').fontSize(8.5);
+    for (const r of open) doc.text(t(`- ${r.building}-${r.unit} ${r.service}: ${AAR_LABEL[r.outcome]}. ${next[r.outcome] ?? ''}`), left, doc.y, { width });
+  }
+  footer(doc, `${a.property.name}  |  After Action Report  |  ${dateUs(asOf)}`, left, width);
+  doc.end(); return done;
+}

@@ -4,7 +4,7 @@ import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
-import { verifyVisit } from '@/src/service/verify';
+import { aarForVisit, AAR_LABEL } from '@/src/service/aar';
 import { RESULT_LABEL } from '@/src/service/phrases';
 import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
 import { Badge, Flash, one, type SP } from '../../ui';
@@ -20,7 +20,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const invoiceRef = subs.map((x) => x.ref).filter(Boolean).join(', ');
   const canInvoice = can(s.role, 'edit_prices');
   const log = await corrections(db, id);
-  const checks = await verifyVisit(db, id);
+  const aar = await aarForVisit(db, id);
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a> / Service notes {c.visit.visitedOn}</div>
@@ -51,15 +51,17 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         <div className="actions"><button type="submit" className="secondary">Save wording</button></div>
       </form>
 
-      <h2>Did it work?</h2>
+      <h2>Post-service audit</h2>
+      <p className="small">Each serviced unit before the visit, what was done, and the first audit or check-in after it. Due {aar.postAuditDue}. Re-checked automatically with every import.
+        {' '}<a href={`/aar?visit=${id}`} target="_blank">After Action Report PDF</a>{c.visit.documentId && <> · <a href={`/aar?document=${c.visit.documentId}`} target="_blank">for the whole WA</a></>}</p>
       <div className="tablewrap"><table>
-        <thead><tr><th>Unit</th><th>Issue</th><th>Status</th><th>Evidence</th></tr></thead>
-        <tbody>{checks.map((k) => (
-          <tr key={k.eventId}><td className="nowrap">{k.building}-{k.unit}</td><td>{k.issueCode ?? '—'}</td>
-            <td><Badge tone={k.status === 'verified' ? 'ok' : k.status === 'failed' ? 'bad' : 'warn'}>{k.status}</Badge></td><td className="small">{k.evidence}</td></tr>
-        ))}{!checks.length && <tr><td colSpan={4} className="small">No units.</td></tr>}</tbody>
+        <thead><tr><th>Unit</th><th>Before</th><th>Work done</th><th>After</th><th>Outcome</th></tr></thead>
+        <tbody>{aar.rows.map((r) => (
+          <tr key={r.eventId}><td className="nowrap">{r.building}-{r.unit} {r.service}</td><td>{r.before.code ?? '—'}{r.before.auditEnded ? <span className="small"> to {r.before.auditEnded}</span> : null}</td>
+            <td className="small">{r.work}{r.newTxId ? ` · new ID ${r.newTxId}` : ''}</td><td className="small">{r.after.evidence}</td>
+            <td><Badge tone={r.outcome === 'fixed' ? 'ok' : r.outcome === 'awaiting_audit' ? 'gray' : r.outcome === 'revisit' ? 'warn' : 'bad'}>{AAR_LABEL[r.outcome]}</Badge></td></tr>
+        ))}{!aar.rows.length && <tr><td colSpan={5} className="small">No units.</td></tr>}</tbody>
       </table></div>
-      <p className="small">Checked against audits and check-ins imported since the visit. Re-checked automatically with every new import.</p>
 
       <h2>Photos</h2>
       <div className="tablewrap"><table><tbody>

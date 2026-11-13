@@ -24,6 +24,9 @@ export function Today({ q }: { q: Queues }) {
       <Queue title="Still failing after service" hint="An audit taken after the visit still flags the unit." n={q.failed.length}>
         {q.failed.map((x, i) => <li key={i}><a href={`/visits/${x.visitId}`}>{x.property}</a>: {x.unit} {x.service}: {x.evidence} <Age d={x.days} /></li>)}
       </Queue>
+      <Queue title="Post-service audit due" hint="The audit after these visits has not been imported yet. Import it to see whether the work held." n={q.postAudit.length}>
+        {q.postAudit.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.waiting, 'unit')} awaiting audit, due {x.dueOn} <Age d={x.days} limit={7} /></li>)}
+      </Queue>
       <Queue title="Issued documents with units not yet serviced" hint="No visit recorded for these units since the document." n={q.notVisited.length}>
         {q.notVisited.map((x) => <li key={x.documentId}><a href={`/documents/${x.documentId}`}>{x.property} {x.number}</a>: {plural(x.units, 'unit')} <Age d={x.days} limit={LIMITS.docVisit} /></li>)}
       </Queue>
