@@ -3,7 +3,8 @@
 // Inovonics CIM carries the flag; the Next Century CIM is read when its export has a battery column.
 // Settings (all optional): pm_code (label used on audits and documents, default "PM"),
 //   pm_warranty ("part" = parts and labor covered like any warranty work [default], "never" = always billable),
-//   pm_battery_threshold (percent at or below which a battery counts as low, default 25),
+//   pm_battery_threshold (percent at or below which a battery is flagged low on audits and reports, default 25),
+//   pm_wa_threshold (percent at or below which a low battery goes on the WA for service, default 1),
 //   pm_battery_price (battery price when the catalog has no battery for the transmitter model, default 9.10).
 import type { Db } from '../db';
 
@@ -17,13 +18,13 @@ export interface LowBattery {
   batteryLevel: number | null; model: string | null;
 }
 
-export interface PmSettings { code: string; warranty: 'part' | 'never'; threshold: number; batteryPrice: number }
+export interface PmSettings { code: string; warranty: 'part' | 'never'; threshold: number; waThreshold: number; batteryPrice: number }
 export async function pmSettings(q: Q): Promise<PmSettings> {
-  const rows = (await q.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting WHERE key IN ('pm_code','pm_warranty','pm_battery_threshold','pm_battery_price')`)).rows;
+  const rows = (await q.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting WHERE key IN ('pm_code','pm_warranty','pm_battery_threshold','pm_wa_threshold','pm_battery_price')`)).rows;
   const get = (k: string) => rows.find((r) => r.key === k)?.value;
   const n = (k: string, d: number) => { const x = Number(get(k)); return get(k) !== undefined && Number.isFinite(x) ? x : d; };
   const code = typeof get('pm_code') === 'string' && (get('pm_code') as string).trim() ? (get('pm_code') as string).trim() : 'PM';
-  return { code, warranty: get('pm_warranty') === 'never' ? 'never' : 'part', threshold: n('pm_battery_threshold', 25), batteryPrice: n('pm_battery_price', 9.1) };
+  return { code, warranty: get('pm_warranty') === 'never' ? 'never' : 'part', threshold: n('pm_battery_threshold', 25), waThreshold: n('pm_wa_threshold', 1), batteryPrice: n('pm_battery_price', 9.1) };
 }
 
 /** Battery for a transmitter model: a catalog battery whose name mentions the model, else the default price. */
@@ -99,3 +100,6 @@ export async function lowBatteryXlsx(rows: Awaited<ReturnType<typeof lowBatteryR
   ws.columns.forEach((c, i) => { c.width = [8, 10, 9, 16, 10, 10, 12, 14, 12, 12, 12, 12, 12][i]; });
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }
+
+/** Does this low battery go on the WA? A yes/no flag (no percent) counts; a percent must be at or below the WA level. */
+export const forWa = (b: { level: number | null } | null, pm: PmSettings) => !!b && (b.level === null || b.level <= pm.waThreshold);

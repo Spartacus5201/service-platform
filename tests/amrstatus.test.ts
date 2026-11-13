@@ -44,7 +44,7 @@ describe('Next Century AMR Status Report', () => {
     const ntLine = lines.find((l) => n(l.unit) === nt)!;
     expect(ntLine).toMatchObject({ issue_code: 'NT', component: 'battery', unit_price: '9.10', labor_price: '85.00' });
     const pmLines = lines.filter((l) => l.issue_code === 'PM');
-    expect(pmLines.map((l) => n(l.unit)).sort()).toEqual([pm1, pm25].sort());
+    expect(pmLines.map((l) => n(l.unit))).toEqual([pm1]);             // 25% is flagged on the audit, only 1% goes on the WA
     expect(pmLines.every((l) => l.description === PM_DESCRIPTION && l.unit_price === '9.10' && l.component === 'battery')).toBe(true);
 
     // A catalog battery for the transmitter model overrides the default price.

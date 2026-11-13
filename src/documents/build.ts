@@ -104,7 +104,7 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
       const propPrices = await getPropertyPrices(tx, input.propertyId);
       const laborDefault = propPrices.Labor ?? rate;
       const todo = needsAction(await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn));
-      const { pmSettings, batteryFor, PM_DESCRIPTION } = await import('../service/battery');
+      const { pmSettings, batteryFor, forWa, PM_DESCRIPTION } = await import('../service/battery');
       const pm = await pmSettings(tx);
       for (const l of todo) {
         // Only Needs Service implies a part; Investigate and Verify ID stay unpriced until the office decides.
@@ -113,8 +113,8 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
         const own = l.recommendation.action === 'Needs Service' ? (l.recommendation.component === 'transmitter' ? propPrices.Transmitter : l.recommendation.component === 'meter' ? propPrices.Meter : undefined) : undefined;
         let part = own ?? (item?.price ?? null); let itemId = item?.id ?? null; let component: string | null = l.recommendation.component ?? null;
         // A transmitter that stopped with a flat battery needs a battery, not a new transmitter.
-        if (l.recommendation.action === 'Needs Service' && component === 'transmitter' && l.lowBattery) {
-          const bat = await batteryFor(tx, l.lowBattery.model, input.createdOn, pm);
+        if (l.recommendation.action === 'Needs Service' && component === 'transmitter' && forWa(l.lowBattery, pm)) {
+          const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
           part = bat.price; itemId = bat.itemId; component = 'battery';
         }
         await tx.query(
@@ -124,9 +124,9 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
            l.coverage.laborCovered, l.coverage.partCovered, component, l.recommendation.action !== 'Unrecognized', labor]);
         lines++;
       }
-      // Preventative maintenance: low-battery transmitters that are otherwise reading fine get their own line group.
+      // Preventative maintenance: transmitters still reading with a battery at or below the WA level get their own line group.
       const todoIds = new Set(todo.map((l) => l.endpointId));
-      const pmLines = (await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn)).filter((l) => l.lowBattery && !todoIds.has(l.endpointId));
+      const pmLines = (await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn)).filter((l) => forWa(l.lowBattery, pm) && !todoIds.has(l.endpointId));
       for (const l of pmLines) {
         const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
         const covered = pm.warranty === 'never' ? { labor: false, part: false } : { labor: l.coverage.laborCovered, part: l.coverage.partCovered };

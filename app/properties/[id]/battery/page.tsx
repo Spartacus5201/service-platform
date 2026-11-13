@@ -18,7 +18,7 @@ export default async function Battery({ params }: { params: Promise<{ id: string
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${id}`}>{p.name}</a> / Low battery</div>
       <h1>Low battery report</h1>
-      <p className="sub">Transmitters whose latest check-in reports low battery (at or below {pm.threshold}%). Still reading: coded {pm.code} (preventative maintenance) and added to new WAs and Proposals as a battery replacement. Stopped checking in: the audit's failure line is priced as a battery. Battery status comes from the AMR Status Report and CIM imports.</p>
+      <p className="sub">Transmitters whose latest check-in reports battery at or below {pm.threshold}%, flagged {pm.code} (preventative maintenance). At or below {pm.waThreshold}% the battery goes on new WAs and Proposals: a battery replacement line while it still reads, or the failure line priced as a battery once it has stopped. Battery status comes from the AMR Status Report and CIM imports.</p>
       <p className="small">{rows.length} low: {rows.length - stopped} still checking in (preventative maintenance), {stopped} stopped checking in.</p>
       <p><a className="btn secondary" href={`/properties/${id}/battery/export`} download>Download Excel</a></p>
       <div className="tablewrap"><table>
@@ -26,7 +26,7 @@ export default async function Battery({ params }: { params: Promise<{ id: string
         <tbody>
           {rows.map((r) => (
             <tr key={r.deviceId}>
-              <td className="nowrap">{r.endpointId ? <a href={`/endpoints/${r.endpointId}`}>{r.building}-{r.unit}</a> : '—'}</td><td>{r.service ?? ''}</td><td>{r.hardwareId}</td><td>{r.model ?? ''}</td><td>{r.batteryLevel === null ? 'low' : `${r.batteryLevel}%`}</td>
+              <td className="nowrap">{r.endpointId ? <a href={`/endpoints/${r.endpointId}`}>{r.building}-{r.unit}</a> : '—'}</td><td>{r.service ?? ''}</td><td>{r.hardwareId}</td><td>{r.model ?? ''}</td><td>{r.batteryLevel === null ? 'low' : `${r.batteryLevel}%`}{(r.batteryLevel === null || r.batteryLevel <= pm.waThreshold) && <> <Badge tone="warn">WA</Badge></>}</td>
               <td>{r.firstLowOn}</td><td>{r.lastCheckIn}{r.stopped && <> <Badge tone="bad">stopped</Badge></>}</td>
               <td>{r.auditCode ?? '—'}{r.failing && <> <Badge tone="bad">also failing</Badge></>}</td>
               <td className="n">{money(r.batteryPrice)}</td>
