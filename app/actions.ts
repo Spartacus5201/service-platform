@@ -20,7 +20,7 @@ import { addPhoto, approveCloseout, saveClientText, sendInvoiceSheet, CloseoutEr
 import type { Result } from '@/src/service/record';
 import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '@/src/service/correct';
 import { closeoutData } from '@/src/service/closeout';
-import { markExported, saveIdOverrides } from '@/src/service/idupdate';
+import { buildIdUpdate, markExported, saveIdOverrides } from '@/src/service/idupdate';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 
@@ -366,7 +366,7 @@ export async function saveCloseoutAction(fd: FormData) {
 export async function approveCloseoutAction(fd: FormData) {
   const sess = await requireCan('edit_documents');
   const id = s(fd, 'visit_id')!;
-  try { await approveCloseout(await getDb(), id, sess.userId); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
+  try { const db = await getDb(); await approveCloseout(db, id, sess.userId); await buildIdUpdate(db, id); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${id}`, 'Client notes approved.'));
 }
 
