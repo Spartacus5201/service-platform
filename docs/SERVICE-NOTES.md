@@ -2,13 +2,17 @@
 
 Status: planned (not built). Based on the three Minol templates: Service Notes (client), Service Invoicing (internal), ID Update (billing system).
 
+## Decisions made
+- **No AI in the workflow.** Processing notes and photos is rules-based and manual: phrase templates keyed to issue and outcome, edited by a coordinator. Claude is used only to build the system.
+- Port and Net default to 0 (see ID Update).
+
 ## Flow
 
 One **close-out** per visit/WA. Technician notes and photos go in; five outputs come out. Status moves Draft → Approved → Verified → ID record exported → Invoiced → Sent to client. Steps 3 and 4 do not wait for step 2.
 
 | # | Step | Output |
 |---|---|---|
-| 1 | Process notes | Customer-friendly text per unit, edited and approved by a coordinator. The technician's original is kept unchanged beside it. |
+| 1 | Process notes | Customer-friendly text per unit, built from phrase templates keyed to issue and outcome, then edited and approved by a coordinator. The technician's original is kept unchanged beside it. |
 | 2 | Verify what we touched | Per touched endpoint: Pending / Verified / Failed, re-checked on each audit or CIM import (new transmitter checking in, or reads advancing after the visit date). Failed creates a follow-up. |
 | 3 | ID update record | Separate Excel for the billing system (below). |
 | 4 | Invoicing document | Internal PDF for the admin (below). |
@@ -27,13 +31,12 @@ Proposed: one generated workbook with the same column layout so the admin's proc
 - **Changes**: one row per unit changed; old values from our installation history, new values from the close-out.
 - **Recoup**: equipment removed and returned, with date.
 - **Validation**: filled in automatically when the next audit/CIM import arrives (transmitter ID matches, meter matches), replacing the manual formula columns and the 5 duplicate sheets.
-Gap: Port and Net are not stored yet (they exist in the Manual Audit as Mport / MNetAddr). Needs a migration and import change.
+Port and Net are almost always 0. Store them per endpoint, default 0, import them where the report has them (Manual Audit: Mport / MNetAddr), and allow a manual override on the close-out when they differ. The billing system and the main transmitter ID repository remain the source of truth for them.
 
 ## Build order
 A. Intake, customer-friendly text, client notes PDF, invoicing PDF.  B. ID update workbook, then verification.
 
 ## Decisions needed
-- May Claude process technician notes and photos (data policy / IT)? Otherwise rules and templates only.
 - Where photos are stored and for how long.
 - Who approves notes before they go to the client.
 - How the ID update file reaches UBS (hand-off by file today).
