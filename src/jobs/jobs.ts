@@ -44,7 +44,8 @@ export async function createJob(q: Q, j: JobInput): Promise<string> {
 
 export async function updateJob(q: Q, id: string, j: Omit<JobInput, 'propertyId' | 'createdBy'>): Promise<void> {
   if (!j.title.trim()) throw new JobError('Give the job a short title.');
-  await q.query(`UPDATE job SET title=$2, source=$3, requested_on=$4, requested_by=$5, request_notes=$6, salesforce_case=$7, salesforce_status=$8 WHERE id=$1`,
+  await q.query(`UPDATE job SET title=$2, source=$3, requested_on=$4, requested_by=$5, request_notes=$6, salesforce_case=$7,
+      salesforce_synced_at = CASE WHEN salesforce_status IS DISTINCT FROM $8 THEN NULL ELSE salesforce_synced_at END, salesforce_status=$8 WHERE id=$1`,
     [id, j.title.trim(), j.source ?? 'other', j.requestedOn, j.requestedBy ?? null, j.requestNotes ?? null, j.salesforceCase ?? null, j.salesforceStatus ?? null]);
 }
 
@@ -86,7 +87,7 @@ export interface TimelineItem { on: string; what: string; detail?: string; href?
 export interface JobDetail {
   id: string; number: number; propertyId: string; property: string; classId: string;
   title: string; source: JobSource; requestedOn: string; requestedBy: string | null; requestNotes: string | null;
-  salesforceCase: string | null; salesforceStatus: string | null; closedOn: string | null; closeReason: string | null;
+  salesforceCase: string | null; salesforceStatus: string | null; salesforceSyncedAt: string | null; closedOn: string | null; closeReason: string | null;
   stage: JobStage; since: string;
   audits: { id: string; on: string; filename: string | null; ended: string | null }[];
   documents: { id: string; type: string; number: string; title: string | null; issued: boolean; createdOn: string; quoted: number }[];
@@ -100,8 +101,8 @@ export interface JobDetail {
 
 export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
   const j = await one<{ id: string; number: number; property_id: string; name: string; class_id: string; title: string; source: JobSource; requested_on: string; requested_by: string | null;
-    request_notes: string | null; salesforce_case: string | null; salesforce_status: string | null; closed_on: string | null; close_reason: string | null }>(db,
-    `SELECT j.id, j.number, j.property_id, p.name, p.class_id, j.title, j.source, j.requested_on::text, j.requested_by, j.request_notes, j.salesforce_case, j.salesforce_status,
+    request_notes: string | null; salesforce_case: string | null; salesforce_status: string | null; synced: string | null; closed_on: string | null; close_reason: string | null }>(db,
+    `SELECT j.id, j.number, j.property_id, p.name, p.class_id, j.title, j.source, j.requested_on::text, j.requested_by, j.request_notes, j.salesforce_case, j.salesforce_status, j.salesforce_synced_at::text synced,
             j.closed_on::text, j.close_reason FROM job j JOIN property p ON p.id=j.property_id WHERE j.id=$1`, [id]);
   if (!j) return null;
   const tl: TimelineItem[] = [{ on: j.requested_on, what: 'Requested', detail: [SOURCE_LABEL[j.source], j.requested_by, j.request_notes].filter(Boolean).join(' · ') }];
@@ -187,7 +188,7 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
   return {
     id: j.id, number: j.number, propertyId: j.property_id, property: j.name, classId: j.class_id,
     title: j.title, source: j.source, requestedOn: j.requested_on, requestedBy: j.requested_by, requestNotes: j.request_notes,
-    salesforceCase: j.salesforce_case, salesforceStatus: j.salesforce_status, closedOn: j.closed_on, closeReason: j.close_reason,
+    salesforceCase: j.salesforce_case, salesforceStatus: j.salesforce_status, salesforceSyncedAt: j.synced, closedOn: j.closed_on, closeReason: j.close_reason,
     stage, since: tl[tl.length - 1]?.on ?? j.requested_on,
     audits, documents, visits, outcomes, idUpdates, units: [...units.values()],
     money: { quoted: Math.round(quotedTotal * 100) / 100, invoiced: Math.round(invoicedTotal * 100) / 100, difference: Math.round((invoicedTotal - quotedTotal) * 100) / 100 },
@@ -209,4 +210,20 @@ export async function listJobs(db: Db, o: { propertyId?: string; includeClosed?:
 export async function openJobs(q: Q, propertyId: string) {
   return (await q.query<{ id: string; number: number; title: string; requested_on: string }>(
     `SELECT id, number, title, requested_on::text FROM job WHERE property_id=$1 AND closed_on IS NULL ORDER BY requested_on DESC, number DESC`, [propertyId])).rows;
+}
+
+/** Read the job's case from Salesforce and copy its status onto the job. Returns a warning when the case looks wrong for this property. */
+export async function refreshFromSalesforce(q: Q, jobId: string, client: import('../salesforce/client').SalesforceClient): Promise<{ status: string; warning: string | null }> {
+  const { statusLine } = await import('../salesforce/client');
+  const j = await one<{ salesforce_case: string | null; account: string | null; property: string }>(q,
+    `SELECT j.salesforce_case, p.salesforce_account_ref account, p.name property FROM job j JOIN property p ON p.id=j.property_id WHERE j.id=$1`, [jobId]);
+  if (!j) throw new JobError('Unknown job.');
+  if (!j.salesforce_case) throw new JobError('Add the Salesforce case number first.');
+  const c = await client.getCase(j.salesforce_case);
+  if (!c) throw new JobError(`Salesforce has no case ${j.salesforce_case}.`);
+  const status = statusLine(c);
+  await q.query(`UPDATE job SET salesforce_status=$2, salesforce_synced_at=now() WHERE id=$1`, [jobId, status]);
+  const warning = j.account && c.accountId && j.account !== c.accountId
+    ? `Case ${c.caseNumber} is on Salesforce account ${c.accountName ?? c.accountId}, not this property's account.` : null;
+  return { status, warning };
 }

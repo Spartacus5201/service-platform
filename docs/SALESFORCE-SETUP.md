@@ -20,3 +20,14 @@ The Service Platform only reads from Salesforce. Do this in a sandbox first, the
 7. **Limits and ownership.** The org's daily API limit (we expect a few hundred calls a day). One named admin who owns the integration if fields or statuses change. To disable quickly: deactivate the integration user.
 
 **Check:** in the sandbox, try to edit a Case as the integration user. It must be refused.
+
+## Turning it on in Service Platform
+Set these on the server (never in the repository):
+```
+SF_MODE=live
+SF_DOMAIN=https://yourcompany.my.salesforce.com
+SF_CLIENT_ID=<consumer key>
+SF_CLIENT_SECRET=<consumer secret>
+SF_API_VERSION=62.0
+```
+`SF_MODE=mock` uses built-in sample cases (the demo does this); `off` (default) means no lookups. The app only signs in and runs read-only queries: Case number, status, subject, account, and the case's work orders (number, status, start date). On a job, "Refresh status from Salesforce" copies that status onto the job and warns if the case belongs to a different account than the property.

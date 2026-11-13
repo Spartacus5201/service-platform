@@ -30,6 +30,7 @@ async function setupProperty(db: Db, s: Spec) {
     `INSERT INTO property (class_id,name,address,city,state,zip,installed_by_us,billing_contract,msa) VALUES ($1,$2,$3,$4,'TX','78701',$5,$6,$7) RETURNING id`,
     [s.classId, s.name, s.address, s.city, s.installedByUs, s.billingContract, s.msa])).rows[0].id;
   await db.query(`INSERT INTO contact (property_id,name,phone,email,is_primary) VALUES ($1,'Pat Manager','555-0100','manager@example.test',true)`, [pid]);
+  await db.query(`UPDATE property SET salesforce_account_ref=$2 WHERE id=$1`, [pid, `001MOCK000000${s.classId.slice(-1)}`]);
   if (s.installedByUs) await importParsed(db, pid, parsePsr(synthPsr(units, o)), { createMissing: true });
   await db.query(`UPDATE property SET install_completed_on=$2 WHERE id=$1 AND installed_by_us`, [pid, s.installedOn]);
   const audit = await importParsed(db, pid, parseAutoAudit(synthAutoAudit(units, o)), { createMissing: true });
@@ -71,7 +72,7 @@ export async function buildDemo(db: Db): Promise<{ properties: number }> {
       }
       // A new request that has only just come in.
       await createJob(db, { propertyId: p.pid, title: 'Resident disputes high water bill', source: 'phone', requestedOn: '2026-11-12', requestedBy: 'Pat Manager',
-        requestNotes: 'Unit 104 says the October bill is double the usual. Wants the meter tested.' });
+        requestNotes: 'Unit 104 says the October bill is double the usual. Wants the meter tested.', salesforceCase: '00813050', salesforceStatus: 'Awaiting Authorization' });
     } else if (s.classId === '9910002') {
       // Out-of-warranty, no billing contract: visit recorded, client notes waiting for approval.
       if (units.length >= 2) {
@@ -83,7 +84,7 @@ export async function buildDemo(db: Db): Promise<{ properties: number }> {
       }
     } else {
       // MSA property: approved notes, not yet invoiced, ID update built but not sent; plus a draft Proposal.
-      const job = await createJob(db, { propertyId: p.pid, title: 'MSA quarterly service', source: 'audit', requestedOn: '2026-11-01' });
+      const job = await createJob(db, { propertyId: p.pid, title: 'MSA quarterly service', source: 'audit', requestedOn: '2026-11-01', salesforceCase: '00813077', salesforceStatus: 'Authorized' });
       await attachAudit(db, job, p.audit.batchId!);
       if (units.length >= 2) {
         const v = await recordVisit(db, { propertyId: p.pid, visitedOn: '2026-11-11', technician: 'Jordan Tech', outcome: 'completed', jobId: job,

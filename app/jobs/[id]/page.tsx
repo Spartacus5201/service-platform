@@ -5,7 +5,8 @@ import { can } from '@/src/auth/auth';
 import { today } from '@/src/server/dates';
 import { jobDetail, STAGE, SOURCE_LABEL, type JobSource } from '@/src/jobs/jobs';
 import { AAR_LABEL } from '@/src/service/aar';
-import { attachAuditAction, closeJobAction, createDocumentAction, updateJobAction } from '../../actions';
+import { attachAuditAction, closeJobAction, createDocumentAction, refreshSalesforceAction, updateJobAction } from '../../actions';
+import { salesforceMode } from '@/src/salesforce/client';
 import { Badge, Flash, money, one, us, daysSince, type SP } from '../../ui';
 import { StageBadge } from '../stage';
 
@@ -20,6 +21,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
   const latestAudit = j.audits[j.audits.length - 1];
   const open = j.stage !== 'closed';
   const firstWa = j.documents.find((d) => d.type !== 'RFM');
+  const sf = salesforceMode();
   return (
     <>
       <div className="crumbs"><a href="/jobs">Jobs</a> / <a href={`/properties/${j.propertyId}`}>{j.property}</a> / #{j.number}</div>
@@ -53,6 +55,13 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
         </div>
         <div className="field"><label htmlFor="request_notes">What was asked</label><textarea id="request_notes" name="request_notes" rows={2} defaultValue={j.requestNotes ?? ''} /></div>
         <div className="actions"><button type="submit" className="secondary">Save request</button></div>
+      </form>
+      <form action={refreshSalesforceAction} className="row" style={{ marginTop: '.5rem', alignItems: 'center' }}>
+        <input type="hidden" name="job_id" value={j.id} />
+        {sf === 'off'
+          ? <p className="small">Salesforce lookups are off on this server: type the case status by hand. They switch on when API access is granted (SALESFORCE-SETUP.md).</p>
+          : <><button type="submit" className="secondary" disabled={!j.salesforceCase}>Refresh status from Salesforce</button>
+              <span className="small">{sf === 'mock' ? 'Sample data (demo mode). ' : ''}{j.salesforceSyncedAt ? `Last read ${us(j.salesforceSyncedAt)} ${j.salesforceSyncedAt.slice(11, 16)}.` : 'Status typed by hand.'}</span></>}
       </form>
 
       <h2>Audit</h2>

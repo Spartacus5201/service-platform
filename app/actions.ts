@@ -22,7 +22,8 @@ import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '
 import { closeoutData } from '@/src/service/closeout';
 import { buildIdUpdate, markExported, saveIdOverrides } from '@/src/service/idupdate';
 import { addUnitForIssue, dismissIssue, IssueError } from '@/src/import/issues';
-import { createJob, updateJob, closeJob, reopenJob, attachAudit, JobError, type JobSource } from '@/src/jobs/jobs';
+import { createJob, updateJob, closeJob, reopenJob, attachAudit, refreshFromSalesforce, JobError, type JobSource } from '@/src/jobs/jobs';
+import { salesforce, SalesforceError } from '@/src/salesforce/client';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 import { createUser } from '@/src/auth/auth';
@@ -421,8 +422,11 @@ export async function createJobAction(fd: FormData) {
   const sess = await requireCan('edit_documents');
   const propertyId = s(fd, 'property_id')!;
   let id: string;
-  try { id = await createJob(await getDb(), { propertyId, ...jobFields(fd), createdBy: sess.userId }); }
+  const db = await getDb();
+  try { id = await createJob(db, { propertyId, ...jobFields(fd), createdBy: sess.userId }); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/properties/${propertyId}?tab=work`, e.message)); throw e; }
+  // Fill the status from Salesforce when a case was given and lookups are on; a failure here is not a reason to lose the job.
+  try { const client = salesforce(); if (client && s(fd, 'salesforce_case')) await refreshFromSalesforce(db, id, client); } catch { /* status stays as typed */ }
   redirect(withMsg(`/jobs/${id}`, 'Job created.'));
 }
 export async function updateJobAction(fd: FormData) {
@@ -440,6 +444,20 @@ export async function closeJobAction(fd: FormData) {
   catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Job closed.'));
 }
+export async function refreshSalesforceAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'job_id')!;
+  let msg: string;
+  try {
+    const client = salesforce();
+    if (!client) redirect(withError(`/jobs/${id}`, 'Salesforce lookups are off on this server.'));
+    const r = await refreshFromSalesforce(await getDb(), id, client);
+    msg = `Salesforce: ${r.status}${client.mode === 'mock' ? ' (sample data)' : ''}`;
+    if (r.warning) redirect(withError(withMsg(`/jobs/${id}`, msg), r.warning));
+  } catch (e) { if (isRedirect(e)) throw e; if (e instanceof JobError || e instanceof SalesforceError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
+  redirect(withMsg(`/jobs/${id}`, msg));
+}
+
 export async function attachAuditAction(fd: FormData) {
   await requireCan('edit_documents');
   const id = s(fd, 'job_id')!; const batch = s(fd, 'batch_id');

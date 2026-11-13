@@ -157,3 +157,6 @@ Service notes page → **Correct this record**. Change visit details (date, tech
 
 ## Jobs
 A job is one piece of work for one property, from the request to the invoice. Start one on the property page when a request comes in (Salesforce case, phone, email), attach the audit, draft the WA / Proposal / RFM from the job, and record service against it. A document drafted straight from an audit starts a job automatically. The stage (Requested, Audited, Document drafted, Quoted, Serviced, Notes approved, Follow-up needed, Verifying, Ready to close, Closed) is worked out from what is linked; only the request and the close are typed in. Authorization and scheduling stay on the Salesforce case (status copied by hand until Salesforce is connected). Jobs board at /jobs; each job page has the timeline, units with links to their history, and quoted vs invoiced.
+
+## Salesforce
+Read-only case lookup with three modes (`SF_MODE`: off, mock, live). A job's "Refresh status from Salesforce" copies the case status and latest work order onto the job. See docs/SALESFORCE-SETUP.md.
