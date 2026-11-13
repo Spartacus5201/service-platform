@@ -59,7 +59,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
         <tbody>
           {lines.map((l) => (
             <tr key={l.readingId} className={l.recommendation.action === 'No action' ? 'muted' : ''}>
-              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}{l.lowBattery && <> <Badge tone="warn">PM · low battery since {l.lowBattery.since}</Badge></>}</td>
+              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}{l.lowBattery && <> <Badge tone="warn">{l.recommendation.action === 'No action' ? 'PM · ' : ''}battery {l.lowBattery.level === null ? 'low' : `${l.lowBattery.level}%`} since {l.lowBattery.since}</Badge></>}</td>
               <td><Badge tone={actionTone(l.recommendation.action)}>{l.recommendation.action}</Badge>{l.override && <> <Badge tone="info">edited</Badge></>}{l.recommendation.owner ? <span className="small"> · {l.recommendation.owner}</span> : null}{l.recommendation.component ? <span className="small"> · {l.recommendation.component}</span> : null}</td>
               <td className="small">{l.recommendation.reason}</td>
               <td className="small">{l.recommendation.action === 'No action' ? '' : (

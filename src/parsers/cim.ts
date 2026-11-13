@@ -9,6 +9,8 @@ export interface CimUnitDevice {
   meterLabel: string | null;       // Meter_Id on the report (vendor label)
   hardwareId: string | null;       // transmitter / transceiver ID
   meterModel: string | null;
+  transmitterModel?: string | null;
+  batteryLevel?: number | null;     // percent, Next Century AMR Status Report
   lastCheckIn: string | null;
   imr: number | null;
   pulseCount: number | null;
@@ -146,4 +148,36 @@ export function parseCimInovonics(rows: Grid): CimParse {
     totalEndpoints: null, reportingIn: null, nonAdvancing: null,
     repeaters, devices, warnings,
   };
+}
+
+/** Next Century AMR Status Report (.csv or .xlsx): one row per transmitter with Battery Level as a percent. No ClassID. */
+export function isAmrStatusHeader(r: Cell[] | undefined): boolean {
+  const h = headerMap(r ?? []);
+  return h.has('serial number') && h.has('last check in') && h.has('building') && h.has('unit');
+}
+export function parseAmrStatus(rows: Grid): CimParse {
+  const hi = findRow(rows, (r) => isAmrStatusHeader(r), 0, 10);
+  if (hi < 0) throw new ParseError('AMR Status Report header not found (expected Building, Unit, Serial Number, Last Check In).');
+  const h = headerMap(rows[hi]);
+  const devices: CimUnitDevice[] = []; const warnings: string[] = [];
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i] ?? [];
+    const building = str(at(r, h.get('building'))); const unit = str(at(r, h.get('unit')));
+    if (!building && !unit) continue;
+    const pct = str(at(r, h.get('battery level')));
+    const level = pct ? num(pct.replace('%', '')) : null;
+    devices.push({
+      building: building ?? '', unit: unit ?? '',
+      serviceCode: utilityToServiceCode(str(at(r, h.get('utility type')))),
+      meterLabel: str(at(r, h.get('meter id'))), hardwareId: str(at(r, h.get('serial number'))),
+      meterModel: str(at(r, h.get('meter type'))), transmitterModel: str(at(r, h.get('model'))),
+      batteryLevel: level,
+      lastCheckIn: parseTimestamp(at(r, h.get('last check in'))),
+      imr: num(at(r, h.get('meter read'))), pulseCount: null, meterUsage: num(at(r, h.get('meter usage'))),
+      lowBattery: null, tamper: null, jammed: null, powerLoss: null, reset: null, signalLevel: null, signalMargin: null,
+    });
+  }
+  if (!devices.length) warnings.push('No transmitter rows found.');
+  return { kind: 'cim_nextcentury', property: null, projectId: null, reportDate: null, totalEndpoints: devices.length,
+    reportingIn: null, nonAdvancing: null, repeaters: [], devices, warnings };
 }

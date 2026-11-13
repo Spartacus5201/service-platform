@@ -81,6 +81,9 @@ export const SETTINGS: SettingSpec[] = [
   { key: 'expiring_window_days', label: 'Expiring-soon window', help: 'Warranty shows as Expiring this many days before it ends.', unit: 'days', min: 0, max: 365 },
   { key: 'quote_valid_days', label: 'Quote validity', help: 'Proposals and WAs show as expired after this many days; they can still be approved with a price reconfirmation.', unit: 'days', min: 1, max: 365 },
   { key: 'labor_rate', label: 'Default labor charge', help: 'Starting labor price per unit on new document lines and invoices. Every line can be changed by hand.', unit: 'dollars', min: 0, max: 10000, decimal: true },
+  { key: 'post_audit_days', label: 'Post-service audit due', help: 'Days after a visit when the follow-up audit is expected. After that, visits with units still awaiting an audit appear on Today.', unit: 'days', min: 1, max: 90 },
+  { key: 'pm_battery_threshold', label: 'Low battery level', help: 'A transmitter at or below this battery percent is low: preventative maintenance (PM) while it still reads, and a battery (not a new transmitter) when it has stopped.', unit: 'percent', min: 1, max: 99 },
+  { key: 'pm_battery_price', label: 'Default battery price', help: 'Used when the catalog has no battery for the transmitter model. Labor uses the default labor charge.', unit: 'dollars', min: 0, max: 1000, decimal: true },
   { key: 'raw_import_retention_days', label: 'Keep raw import files', help: 'Uploaded report files are deleted after this many days. Parsed readings and history are kept forever. Applies to new imports.', unit: 'days', min: 7, max: 3650 },
 ];
 

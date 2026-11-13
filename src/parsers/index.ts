@@ -1,13 +1,13 @@
-import { Sheet, Grid, str, findRow, headerMap, readWorkbook, ParseError } from './common';
+import { Sheet, Grid, str, findRow, headerMap, readWorkbook, parseCsv, ParseError } from './common';
 import { parseAutoAudit, parseManualAudit, AuditParse } from './audit';
-import { parseCimNextCentury, parseCimInovonics, CimParse } from './cim';
+import { parseCimNextCentury, parseCimInovonics, parseAmrStatus, isAmrStatusHeader, CimParse } from './cim';
 import { parsePsr, PsrParse } from './psr';
 import { isUnitDirectory, parseUnitDirectory, type UnitDirectoryParse } from './unitdirectory';
 
 export type ReportKind = 'auto_audit' | 'manual_audit' | 'cim_nextcentury' | 'cim_inovonics' | 'psr';
 export type Parsed = AuditParse | CimParse | PsrParse | UnitDirectoryParse;
 
-export interface Detected { kind: ReportKind; sheet: Sheet }
+export interface Detected { kind: ReportKind | 'amr_status'; sheet: Sheet }
 
 const head = (rows: Grid, n = 15) => rows.slice(0, n);
 
@@ -23,6 +23,7 @@ export function detectFormat(sheets: Sheet[]): Detected | null {
       if (keys.has('classid') && keys.has('readcount') && keys.has('metertypeid')) return { kind: 'manual_audit', sheet };
       if (keys.has('classid') && keys.has('tranid2') && keys.has('readdate2')) return { kind: 'auto_audit', sheet };
       if (keys.has('type') && keys.has('txid')) return { kind: 'cim_inovonics', sheet };
+      if (isAmrStatusHeader(r ?? [])) return { kind: 'amr_status', sheet };
     }
     const first = head(sheet.rows, 6);
     const hasProp = first.some((r) => (str(r?.[0]) ?? '').toLowerCase().startsWith('property'));
@@ -40,6 +41,7 @@ export function parseSheets(sheets: Sheet[]): Parsed {
     case 'manual_audit': return parseManualAudit(d.sheet.rows);
     case 'cim_nextcentury': return parseCimNextCentury(d.sheet.rows);
     case 'cim_inovonics': return parseCimInovonics(d.sheet.rows);
+    case 'amr_status': return parseAmrStatus(d.sheet.rows);
     case 'psr': return parsePsr(sheets);
   }
 }
@@ -50,7 +52,9 @@ export async function parseFile(buf: ArrayBuffer | Uint8Array | Buffer): Promise
   if (!isXlsx) {
     const text = new TextDecoder('utf-8').decode(bytes);
     if (isUnitDirectory(text)) return parseUnitDirectory(text);
-    throw new ParseError('Report format not recognised. Use the .xlsx report, or the Unit Directory .csv.');
+    const grid = parseCsv(text.replace(/^\uFEFF/, ''));
+    if (isAmrStatusHeader(grid[0])) return parseAmrStatus(grid);
+    throw new ParseError('Report format not recognised. Use the .xlsx report, the Unit Directory .csv, or the AMR Status Report .csv.');
   }
   return parseSheets(await readWorkbook(buf));
 }

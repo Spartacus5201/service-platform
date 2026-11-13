@@ -74,3 +74,10 @@ export function synthPsr(units: SynthUnit[], o: SynthOpts = {}): Sheet[] {
   for (const u of units) rows.push(w({ 0: u.bldg, 1: u.unit, 2: new Date('2026-03-10T00:00:00Z'), 3: u.tx, 7: 'Synthetic Poly' }));
   return [{ name: 'PSR', rows }, { name: 'PSR CA', rows: [[]] }];
 }
+
+/** Next Century AMR Status Report (CSV text). levels: unit -> battery percent; default 100. */
+export function synthAmrStatus(units: SynthUnit[], levels: Record<string, number> = {}, checkIn = '2026-11-12T08:00:00-05:00', stale: string[] = []): string {
+  const head = 'Building,Unit,Utility Type,Serial Number,Meter Id,Model,Battery Level,Last Check In,Meter Type,Meter Read,Meter Usage';
+  const rows = units.map((u) => [u.bldg, u.unit, 'All Water', u.tx, u.unit, 'TR201', `${levels[u.unit] ?? 100}%`, stale.includes(u.unit) ? '2026-09-01T08:00:00-04:00' : checkIn, 'Synthetic Poly', '1000', '10'].join(','));
+  return [head, ...rows].join('\n') + '\n';
+}

@@ -9,7 +9,7 @@ export interface CatalogImportResult {
 }
 
 const COMPONENT: [RegExp, string][] = [
-  [/transmitter/i, 'transmitter'], [/collector/i, 'collector'], [/repeater/i, 'repeater'],
+  [/batter/i, 'battery'], [/transmitter/i, 'transmitter'], [/collector/i, 'collector'], [/repeater/i, 'repeater'],
   [/meter/i, 'meter'],
 ];
 export function componentFor(partType: string | null): string | null {

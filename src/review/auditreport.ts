@@ -66,6 +66,7 @@ function noteFor(l: AuditLine): string {
   const bits: string[] = [];
   if (l.override) bits.push(l.override.reason);
   else if (l.code === 'INT' || l.code === 'NEG') bits.push(l.recommendation.reason);
+  if (l.lowBattery) bits.push(`Low battery${l.lowBattery.level === null ? '' : ` (${l.lowBattery.level}%)`}`);
   if (l.coverage.laborCovered || l.coverage.partCovered) bits.push('Service warranty');
   return bits.join('. ');
 }
@@ -117,14 +118,15 @@ export async function renderAuditPdf(d: AuditReportData): Promise<Uint8Array> {
     cols.forEach((c, i) => doc.text(c[0], xs[i] + 2, y + 1, { width: c[1] - 4, lineBreak: false }));
     doc.y = y + 15;
   };
-  const rows = d.lines.filter((l) => l.recommendation.action !== 'No action');
+  // Units needing action, then low-battery units still reading (preventative maintenance).
+  const rows = [...d.lines.filter((l) => l.recommendation.action !== 'No action'), ...d.lines.filter((l) => l.recommendation.action === 'No action' && l.lowBattery)];
   head();
   if (!rows.length) doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('No units need action in this audit.', left, doc.y);
   for (const l of rows) {
     const pr = [l.readDate1, l.readDate2].filter((x): x is string => !!x).sort();
     const period = pr.length ? `${us(pr[0])}-${us(pr[pr.length - 1])}` : '';
     const cells = [l.address ?? '', l.building, l.unit, l.service, l.transmitterId ?? '', l.miuid ?? '', us(l.moveInOn), l.usage === null ? '' : String(l.usage), period,
-      ISSUE[l.code] ?? l.code, l.recommendation.action, noteFor(l)].map(t);
+      ISSUE[l.code] ?? l.code, l.recommendation.action === 'No action' && l.lowBattery ? 'Preventative maintenance (PM)' : l.recommendation.action, noteFor(l)].map(t);
     doc.font('Helvetica').fontSize(7.5);
     const h = Math.max(...cells.map((c, i) => doc.heightOfString(c, { width: cols[i][1] - 4 }))) + 4;
     if (doc.y + h > bottom()) { doc.addPage(); head(); }

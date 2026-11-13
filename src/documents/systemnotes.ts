@@ -62,13 +62,15 @@ export const equipmentText = (e: SystemNotes['equipment']) => e.map((x) => `${x.
 
 /** What the technician brings: parts counted from the document, named from the notes, then the standing equipment. */
 export function bringList(notes: SystemNotes, lines: { component: string | null; quantity: number; include: boolean; partCovered?: boolean }[]): { qty: number; device: string }[] {
-  let tx = 0; let mt = 0;
+  let tx = 0; let mt = 0; let bat = 0;
   for (const l of lines.filter((x) => x.include)) {
+    if (l.component === 'battery') bat += l.quantity;
     if (l.component === 'transmitter' || l.component === 'both') tx += l.quantity;
     if (l.component === 'meter' || l.component === 'both') mt += l.quantity;
   }
   const out: { qty: number; device: string }[] = [];
   if (tx) out.push({ qty: tx, device: notes.transmitterDevice ?? 'Transmitter' });
   if (mt) out.push({ qty: mt, device: notes.meterDevice ?? 'Meter' });
+  if (bat) out.push({ qty: bat, device: 'Transmitter battery (match the transmitter model)' });
   return [...out, ...notes.equipment];
 }

@@ -253,14 +253,15 @@ async function importCim(q: Q, propertyId: string, res: ImportResult, reg: Regis
       res.idChanges.push({ building: dev.building, unit: dev.unit, was: cur.hardware_id, now: dev.hardwareId });
       continue;
     }
-    const d = await upsertDevice(q, propertyId, 'transmitter', dev.hardwareId);
+    const d = await upsertDevice(q, propertyId, 'transmitter', dev.hardwareId, { model: dev.transmitterModel ?? null });
     if (d.created) res.devices++;
+    if (dev.transmitterModel) await q.query(`UPDATE device SET model=COALESCE(model,$2) WHERE id=$1`, [d.id, dev.transmitterModel]);
     await ensureInstalled(q, propertyId, d.id, eid, null, 'import');
     await ensurePlaceholderMeter(q, propertyId, eid, null, 'import', dev.meterModel);
     await q.query(
-      `INSERT INTO device_checkin (import_batch_id,device_id,checked_in_at,low_battery,tamper,jammed,power_loss,reset,signal_level,signal_margin,pulse_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [res.batchId, d.id, dev.lastCheckIn, dev.lowBattery, dev.tamper, dev.jammed, dev.powerLoss, dev.reset, dev.signalLevel, dev.signalMargin, dev.pulseCount]);
+      `INSERT INTO device_checkin (import_batch_id,device_id,checked_in_at,low_battery,tamper,jammed,power_loss,reset,signal_level,signal_margin,pulse_count,battery_level)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [res.batchId, d.id, dev.lastCheckIn, dev.lowBattery, dev.tamper, dev.jammed, dev.powerLoss, dev.reset, dev.signalLevel, dev.signalMargin, dev.pulseCount, dev.batteryLevel ?? null]);
     res.checkins++;
   }
 }

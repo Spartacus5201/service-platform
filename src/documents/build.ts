@@ -104,32 +104,36 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
       const propPrices = await getPropertyPrices(tx, input.propertyId);
       const laborDefault = propPrices.Labor ?? rate;
       const todo = needsAction(await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn));
+      const { pmSettings, batteryFor, PM_DESCRIPTION } = await import('../service/battery');
+      const pm = await pmSettings(tx);
       for (const l of todo) {
         // Only Needs Service implies a part; Investigate and Verify ID stay unpriced until the office decides.
         const item = l.recommendation.action === 'Needs Service' ? await suggestItem(tx, l.recommendation.component ?? null, input.createdOn) : null;
         const labor = l.recommendation.action === 'Needs Service' ? laborDefault : null;
         const own = l.recommendation.action === 'Needs Service' ? (l.recommendation.component === 'transmitter' ? propPrices.Transmitter : l.recommendation.component === 'meter' ? propPrices.Meter : undefined) : undefined;
-        const part = own ?? (item?.price ?? null);
+        let part = own ?? (item?.price ?? null); let itemId = item?.id ?? null; let component: string | null = l.recommendation.component ?? null;
+        // A transmitter that stopped with a flat battery needs a battery, not a new transmitter.
+        if (l.recommendation.action === 'Needs Service' && component === 'transmitter' && l.lowBattery) {
+          const bat = await batteryFor(tx, l.lowBattery.model, input.createdOn, pm);
+          part = bat.price; itemId = bat.itemId; component = 'battery';
+        }
         await tx.query(
           `INSERT INTO document_line (version_id,endpoint_id,audit_reading_id,issue_code,description,catalog_item_id,quantity,unit_price,labor_price,labor_covered,part_covered,component,include)
            VALUES ($1,$2,$3,$4,$5,$6,1,$7,$12,$8,$9,$10,$11)`,
-          [ver, l.endpointId, l.readingId, l.code, workLabel(l.code, l.recommendation), item?.id ?? null, part,
-           l.coverage.laborCovered, l.coverage.partCovered, l.recommendation.component ?? null, l.recommendation.action !== 'Unrecognized', labor]);
+          [ver, l.endpointId, l.readingId, l.code, workLabel(l.code, l.recommendation), itemId, part,
+           l.coverage.laborCovered, l.coverage.partCovered, component, l.recommendation.action !== 'Unrecognized', labor]);
         lines++;
       }
       // Preventative maintenance: low-battery transmitters that are otherwise reading fine get their own line group.
-      const { pmSettings, PM_DESCRIPTION } = await import('../service/battery');
-      const pm = await pmSettings(tx);
       const todoIds = new Set(todo.map((l) => l.endpointId));
       const pmLines = (await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn)).filter((l) => l.lowBattery && !todoIds.has(l.endpointId));
-      const txItem = pmLines.length ? await suggestItem(tx, 'transmitter', input.createdOn) : null;
       for (const l of pmLines) {
-        const part = propPrices.Transmitter ?? (txItem?.price ?? null);
+        const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
         const covered = pm.warranty === 'never' ? { labor: false, part: false } : { labor: l.coverage.laborCovered, part: l.coverage.partCovered };
         await tx.query(
           `INSERT INTO document_line (version_id,endpoint_id,audit_reading_id,issue_code,description,catalog_item_id,quantity,unit_price,labor_price,labor_covered,part_covered,component,include)
-           VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10,'transmitter',true)`,
-          [ver, l.endpointId, l.readingId, pm.code, PM_DESCRIPTION, txItem?.id ?? null, part, laborDefault, covered.labor, covered.part]);
+           VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10,'battery',true)`,
+          [ver, l.endpointId, l.readingId, pm.code, PM_DESCRIPTION, bat.itemId, bat.price, laborDefault, covered.labor, covered.part]);
         lines++;
       }
     }

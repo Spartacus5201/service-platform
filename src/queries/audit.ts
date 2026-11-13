@@ -39,7 +39,7 @@ export interface AuditLine {
   override: { reason: string; by: string | null; at: string } | null;
   coverage: Coverage;
   /** The transmitter's latest check-in reports low battery: preventative maintenance. */
-  lowBattery: { since: string; hardwareId: string | null } | null;
+  lowBattery: { since: string; hardwareId: string | null; level: number | null; model: string | null } | null;
 }
 
 /** Every reading in an import batch with its recommendation and warranty position, ready for the audit review screen. */
@@ -80,7 +80,7 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
 
   const { lowBatteryDevices } = await import('../service/battery');
   const low = new Map((await lowBatteryDevices(db, { endpointIds: [...new Set(rows.rows.map((r) => r.endpoint_id))] }))
-    .filter((d) => d.endpointId).map((d) => [d.endpointId!, { since: d.firstLowOn, hardwareId: d.hardwareId }]));
+    .filter((d) => d.endpointId).map((d) => [d.endpointId!, { since: d.firstLowOn, hardwareId: d.hardwareId, level: d.batteryLevel, model: d.model }]));
 
   return rows.rows.map((r) => {
     // Occupancy is unknown until an occupancy (or audit with ranges) import has run for the unit.
