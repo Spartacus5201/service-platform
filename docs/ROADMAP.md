@@ -8,11 +8,12 @@ Audit import and rules (99%+ on two real audits), INT rule, Requested by propert
 ## Next, in order
 
 1. **Smaller items**: activity log page (who changed what, from the existing audit log), properties list search and filters, manual theme toggle, resident notice per unit, limit an audit to a property-supplied unit list, upload several photos at once, a "next audit due" date per property, accuracy report from the real audits.
-2. **Photos to Salesforce**: photos will ultimately live on the Salesforce case. Needs write access to Case files (ContentVersion), which the current read-only setup does not grant; until then they stay here.
-3. **Waiting on IT**: managed Postgres, single sign-on, hosting on the company server, Salesforce credentials (`SF_MODE=live`). See `IT-QUESTIONS.md`, `SALESFORCE-SETUP.md`, `RUNNING.md`.
+2. **Universal importer**: one import screen that recognises any report layout from its headers. Each known layout is a saved column map (which column is building, unit, transmitter ID, read, date, battery...), so a new report type is added by mapping its columns once, not by writing code. Unknown files show their columns for a person to map, then that map is saved for next time. Rules-based, no AI. Built from the additional sample reports being collected; every map gets a test file in the corpus.
+3. **Photo storage**: photos stay in the app (Salesforce access is read-only). Move them out of the database into a photo folder with the database keeping only the reference, and add a retention choice: keep all, or keep only the most recent photo per unit and service (older ones removed after a set time, never while a visit is still open).
+4. **Waiting on IT**: managed Postgres, single sign-on, hosting on the company server, Salesforce credentials (`SF_MODE=live`). See `IT-QUESTIONS.md`, `SALESFORCE-SETUP.md`, `RUNNING.md`.
 
 ## Housekeeping (done along the way)
-- Photos are stored inside the database; fine at current volume, but backups grow with them. They move to the Salesforce case later (item 2).
+- Photos are stored inside the database; fine at current volume, but backups grow with them. Moving them to a folder is item 3.
 - The Docker image is written but not yet built here (no Docker engine in this environment); first `docker compose up` on the homelab is its test.
 - Today recalculates every property's latest audit on each page load. Fine for a demo; save the needs-action count when an audit is imported before this goes past a few dozen properties.
 - A user can approve their own client notes. Fine for four users; add a setting to require a second person if management asks.

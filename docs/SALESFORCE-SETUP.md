@@ -31,3 +31,8 @@ SF_CLIENT_SECRET=<consumer secret>
 SF_API_VERSION=62.0
 ```
 `SF_MODE=mock` uses built-in sample cases (the demo does this); `off` (default) means no lookups. The app only signs in and runs read-only queries: Case number, status, subject, account, and the case's work orders (number, status, start date). On a job, "Refresh status from Salesforce" copies that status onto the job and warns if the case belongs to a different account than the property.
+
+## What the app does and does not pull
+- It never lists, imports or syncs cases. It reads exactly one case, the number typed on a job, and only when someone presses "Refresh status from Salesforce" (or creates a job with a case number).
+- What it keeps from that case is one line of text on the job (status and latest work order). Nothing else is stored.
+- It never writes to Salesforce. Anything that must change in Salesforce is still done in Salesforce.
