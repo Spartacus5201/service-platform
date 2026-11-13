@@ -7,7 +7,8 @@ import { corrections } from '@/src/service/correct';
 import { aarForVisit, AAR_LABEL } from '@/src/service/aar';
 import { RESULT_LABEL } from '@/src/service/phrases';
 import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
-import { Badge, Flash, one, type SP } from '../../ui';
+import type { ReactNode } from 'react';
+import { Badge, Flash, one, us, type SP, type Tone } from '../../ui';
 
 export default async function VisitCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const s = await requireCan('edit_documents');
@@ -22,64 +23,115 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const log = await corrections(db, id);
   const aar = await aarForVisit(db, id);
   const job = (await db.query<{ id: string; number: number }>(`SELECT j.id, j.number FROM job j JOIN visit v ON v.job_id=j.id WHERE v.id=$1`, [id])).rows[0];
+  const ids = (await db.query<{ status: string; n: string }>(`SELECT status, count(*) n FROM id_update WHERE visit_id=$1 GROUP BY status`, [id])).rows;
+  const idn = (st: string) => Number(ids.find((x) => x.status === st)?.n ?? 0);
+  const replaced = c.units.filter((u) => u.newTxId).length;
+  const failing = aar.rows.filter((r) => ['still_failing', 'new_problem', 'revisit'].includes(r.outcome)).length;
+  const waitingAudit = aar.rows.filter((r) => r.outcome === 'awaiting_audit').length;
+
+  type St = { tone: Tone; label: string };
+  const st: St[] = [
+    approved ? { tone: 'ok', label: 'Approved' } : { tone: 'warn', label: 'To do' },
+    failing ? { tone: 'bad', label: `${failing} not fixed` } : waitingAudit ? { tone: 'gray', label: `Waiting for audit (due ${us(aar.postAuditDue)})` } : { tone: 'ok', label: 'All working' },
+    !replaced ? { tone: 'ok', label: 'No ID changes' } : idn('pending') ? { tone: 'warn', label: `${idn('pending')} to send` } : idn('exported') ? { tone: 'gray', label: 'Sent, awaiting confirmation' } : idn('confirmed') ? { tone: 'ok', label: 'Confirmed' } : { tone: 'gray', label: 'Built when notes are approved' },
+    !approved ? { tone: 'gray', label: 'Blocked: approve step 1' } : !invoiced ? { tone: 'warn', label: 'To send' } : !invoiceRef ? { tone: 'gray', label: 'Sent, no invoice # yet' } : { tone: 'ok', label: `Invoice ${invoiceRef}` },
+    !approved ? { tone: 'gray', label: 'Blocked: approve step 1' } : { tone: 'ok', label: 'Ready to share' },
+  ];
+  const TITLES = ['Process the notes', 'Check it works', 'ID update', 'Invoicing sheet', 'Client service notes'];
+  const Step = ({ n, children, hint }: { n: number; hint: string; children: ReactNode }) => (
+    <section id={`step${n}`} className="card step">
+      <h2 style={{ marginTop: 0 }}><span className="stepno">{n}</span> {TITLES[n - 1]} <Badge tone={st[n - 1].tone}>{st[n - 1].label}</Badge></h2>
+      <p className="small" style={{ marginTop: 0 }}>{hint}</p>
+      {children}
+    </section>
+  );
   return (
     <>
-      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a>{job && <> / <a href={`/jobs/${job.id}`}>Job #{job.number}</a></>} / Service notes {c.visit.visitedOn}</div>
-      <h1>Service notes</h1>
-      <p className="sub">{c.visit.visitedOn} · {c.visit.technician ?? 'no technician'} · {c.property.name} · code {c.code}, charge {c.chargeCode}{c.visit.documentNumber ? ` · WA ${c.visit.documentNumber}` : ''}</p>
+      <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a>{job && <> / <a href={`/jobs/${job.id}`}>Job #{job.number}</a></>} / Service notes {us(c.visit.visitedOn)}</div>
+      <h1>Service visit {us(c.visit.visitedOn)}</h1>
+      <p className="sub">{c.visit.technician ?? 'no technician'} · {c.property.name} · code {c.code}, charge {c.chargeCode}{c.visit.documentNumber ? ` · WA ${c.visit.documentNumber}` : ''}
+        {' '}· NI {c.counts.NI} · NT {c.counts.NT} · INT {c.counts.INT} · High/Low {c.counts.HIGHLOW} · Other {c.counts.other} · Total {c.counts.total}</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
-      <p>{approved ? <Badge tone="ok">approved</Badge> : <Badge tone="warn">draft</Badge>} {invoiced && <Badge tone="info">sent to admin</Badge>}{invoiceRef && <> <Badge tone="ok">invoice {invoiceRef}</Badge></>}
-        {' '}NI {c.counts.NI} · NT {c.counts.NT} · INT {c.counts.INT} · High/Low {c.counts.HIGHLOW} · Other {c.counts.other} · Total {c.counts.total}</p>
+      <ol className="steps">{TITLES.map((t, i) => <li key={t}><a href={`#step${i + 1}`}><span className="stepno">{i + 1}</span> {t}</a> <Badge tone={st[i].tone}>{st[i].label}</Badge></li>)}</ol>
 
-      <form action={saveCloseoutAction}>
-        <input type="hidden" name="visit_id" value={id} />
-        <div className="field"><label htmlFor="summary">Opening paragraph for the client (optional)</label><textarea id="summary" name="summary" rows={2} defaultValue={c.visit.summary ?? ''} /></div>
+      <Step n={1} hint="Read what the technician reported and turn it into client wording. Wording is drafted from fixed phrases for the issue and result; edit anything. Saving after approval sends the notes back to draft.">
+        <form action={saveCloseoutAction}>
+          <input type="hidden" name="visit_id" value={id} />
+          <div className="field"><label htmlFor="summary">Opening paragraph for the client (optional)</label><textarea id="summary" name="summary" rows={2} defaultValue={c.visit.summary ?? ''} /></div>
+          <div className="tablewrap"><table>
+            <thead><tr><th>Unit</th><th>Issue</th><th>Result</th><th>Technician said (internal)</th><th>Wording for the client</th><th>Additional comment</th></tr></thead>
+            <tbody>
+              {c.units.map((u) => (
+                <tr key={u.eventId}>
+                  <td className="nowrap"><input type="hidden" name="event" value={u.eventId} /><a href={`/endpoints/${u.endpointId}`}>{u.building}-{u.unit}</a><div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td>
+                  <td>{u.issue}</td><td>{RESULT_LABEL[u.result]}</td>
+                  <td className="small">{u.techNotes ?? '—'}</td>
+                  <td style={{ minWidth: "24rem" }}><textarea name={`comment_${u.eventId}`} rows={4} defaultValue={clientText(u)} aria-label={`Client wording for ${u.building}-${u.unit}`} /></td>
+                  <td style={{ minWidth: "14rem" }}><textarea name={`extra_${u.eventId}`} rows={3} defaultValue={u.extraComment ?? ''} aria-label="Additional comment" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+          <div className="actions"><button type="submit" className="secondary">Save wording</button></div>
+        </form>
+        <h3>Photos</h3>
+        <div className="tablewrap"><table><tbody>
+          {c.photos.map((p) => (
+            <tr key={p.id}><td><a href={`/visits/${id}/photo/${p.id}`} target="_blank">{p.filename}</a></td><td>{p.caption ?? ''}</td><td>{p.includeInClient ? <Badge tone="ok">in client notes</Badge> : <Badge>internal</Badge>}</td></tr>
+          ))}
+          {!c.photos.length && <tr><td className="small">No photos.</td></tr>}
+        </tbody></table></div>
+        <form action={addPhotoAction} encType="multipart/form-data" className="row">
+          <input type="hidden" name="visit_id" value={id} />
+          <div className="field"><label htmlFor="photo">Photo (JPEG or PNG, up to 8 MB)</label><input id="photo" name="photo" type="file" accept="image/jpeg,image/png" /></div>
+          <div className="field"><label htmlFor="endpoint_id">Unit</label>
+            <select id="endpoint_id" name="endpoint_id"><option value="">General</option>{c.units.map((u) => <option key={u.endpointId} value={u.endpointId}>{u.building}-{u.unit}</option>)}</select></div>
+          <div className="field"><label htmlFor="caption">Caption</label><input id="caption" name="caption" /></div>
+          <div className="field"><label><input type="checkbox" name="include" /> Show to client</label></div>
+          <div className="actions"><button type="submit" className="secondary">Add photo</button></div>
+        </form>
+        {!approved && <form action={approveCloseoutAction} style={{ marginTop: '1rem' }}><input type="hidden" name="visit_id" value={id} /><button type="submit">Approve client wording</button> <span className="small">Unlocks invoicing and the final client notes, and builds the ID update.</span></form>}
+      </Step>
+
+      <Step n={2} hint="Each serviced unit before the visit, what was done, and the first audit or check-in after it. Re-checked automatically with every import.">
         <div className="tablewrap"><table>
-          <thead><tr><th>Unit</th><th>Issue</th><th>Result</th><th>Technician said (internal)</th><th>Wording for the client</th><th>Additional comment</th></tr></thead>
-          <tbody>
-            {c.units.map((u) => (
-              <tr key={u.eventId}>
-                <td className="nowrap"><input type="hidden" name="event" value={u.eventId} />{u.building}-{u.unit}<div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td>
-                <td>{u.issue}</td><td>{RESULT_LABEL[u.result]}</td>
-                <td className="small">{u.techNotes ?? '—'}</td>
-                <td style={{ minWidth: "24rem" }}><textarea name={`comment_${u.eventId}`} rows={4} defaultValue={clientText(u)} aria-label={`Client wording for ${u.building}-${u.unit}`} /></td>
-                <td style={{ minWidth: "14rem" }}><textarea name={`extra_${u.eventId}`} rows={3} defaultValue={u.extraComment ?? ''} aria-label="Additional comment" /></td>
-              </tr>
-            ))}
-          </tbody>
+          <thead><tr><th>Unit</th><th>Before</th><th>Work done</th><th>After</th><th>Outcome</th></tr></thead>
+          <tbody>{aar.rows.map((r) => (
+            <tr key={r.eventId}><td className="nowrap">{r.building}-{r.unit} {r.service}</td><td>{r.before.code ?? '—'}{r.before.auditEnded ? <span className="small"> to {us(r.before.auditEnded)}</span> : null}</td>
+              <td className="small">{r.work}{r.newTxId ? ` · new ID ${r.newTxId}` : ''}</td><td className="small">{r.after.evidence}</td>
+              <td><Badge tone={r.outcome === 'fixed' ? 'ok' : r.outcome === 'awaiting_audit' ? 'gray' : r.outcome === 'revisit' ? 'warn' : 'bad'}>{AAR_LABEL[r.outcome]}</Badge></td></tr>
+          ))}{!aar.rows.length && <tr><td colSpan={5} className="small">No units.</td></tr>}</tbody>
         </table></div>
-        <p className="small">The wording is drafted from fixed phrases for the issue and result. Edit anything; saving sends approved notes back to draft.</p>
-        <div className="actions"><button type="submit" className="secondary">Save wording</button></div>
-      </form>
+        <p><a className="btn secondary" href={`/aar?visit=${id}`} target="_blank">After Action Report PDF</a>{c.visit.documentId && <> <a className="btn secondary" href={`/aar?document=${c.visit.documentId}`} target="_blank">For the whole WA</a></>}</p>
+      </Step>
 
-      <h2>Post-service audit</h2>
-      <p className="small">Each serviced unit before the visit, what was done, and the first audit or check-in after it. Due {aar.postAuditDue}. Re-checked automatically with every import.
-        {' '}<a href={`/aar?visit=${id}`} target="_blank">After Action Report PDF</a>{c.visit.documentId && <> · <a href={`/aar?document=${c.visit.documentId}`} target="_blank">for the whole WA</a></>}</p>
-      <div className="tablewrap"><table>
-        <thead><tr><th>Unit</th><th>Before</th><th>Work done</th><th>After</th><th>Outcome</th></tr></thead>
-        <tbody>{aar.rows.map((r) => (
-          <tr key={r.eventId}><td className="nowrap">{r.building}-{r.unit} {r.service}</td><td>{r.before.code ?? '—'}{r.before.auditEnded ? <span className="small"> to {r.before.auditEnded}</span> : null}</td>
-            <td className="small">{r.work}{r.newTxId ? ` · new ID ${r.newTxId}` : ''}</td><td className="small">{r.after.evidence}</td>
-            <td><Badge tone={r.outcome === 'fixed' ? 'ok' : r.outcome === 'awaiting_audit' ? 'gray' : r.outcome === 'revisit' ? 'warn' : 'bad'}>{AAR_LABEL[r.outcome]}</Badge></td></tr>
-        ))}{!aar.rows.length && <tr><td colSpan={5} className="small">No units.</td></tr>}</tbody>
-      </table></div>
+      <Step n={3} hint="New transmitter or meter IDs that need updating in the billing system. Confirmed automatically when an import shows the new ID.">
+        {replaced ? <p><a className="btn secondary" href={`/visits/${id}/ids`}>Open the ID update record</a> <span className="small">{replaced} unit(s) with a new ID.</span></p> : <p className="small">No equipment was replaced on this visit.</p>}
+      </Step>
 
-      <h2>Photos</h2>
-      <div className="tablewrap"><table><tbody>
-        {c.photos.map((p) => (
-          <tr key={p.id}><td><a href={`/visits/${id}/photo/${p.id}`} target="_blank">{p.filename}</a></td><td>{p.caption ?? ''}</td><td>{p.includeInClient ? <Badge tone="ok">in client notes</Badge> : <Badge>internal</Badge>}</td></tr>
-        ))}
-        {!c.photos.length && <tr><td className="small">No photos.</td></tr>}
-      </tbody></table></div>
-      <form action={addPhotoAction} encType="multipart/form-data" className="row">
-        <input type="hidden" name="visit_id" value={id} />
-        <div className="field"><label htmlFor="photo">Photo (JPEG or PNG, up to 8 MB)</label><input id="photo" name="photo" type="file" accept="image/jpeg,image/png" /></div>
-        <div className="field"><label htmlFor="endpoint_id">Unit</label>
-          <select id="endpoint_id" name="endpoint_id"><option value="">General</option>{c.units.map((u) => <option key={u.endpointId} value={u.endpointId}>{u.building}-{u.unit}</option>)}</select></div>
-        <div className="field"><label htmlFor="caption">Caption</label><input id="caption" name="caption" /></div>
-        <div className="field"><label><input type="checkbox" name="include" /> Show to client</label></div>
-        <div className="actions"><button type="submit" className="secondary">Add photo</button></div>
-      </form>
+      <Step n={4} hint="The internal sheet admin uses to raise the invoice in the company layout.">
+        {canInvoice ? (<>
+          <p><a className="btn secondary" href={`/visits/${id}/export?kind=invoice`} target="_blank">Invoicing sheet PDF (internal)</a></p>
+          {approved && !invoiced && (
+            <form action={sendInvoiceSheetAction} className="row">
+              <input type="hidden" name="visit_id" value={id} />
+              <div className="field"><label htmlFor="external_ref">Admin reference (ticket or invoice no.)</label><input id="external_ref" name="external_ref" /></div>
+              <div className="actions"><button type="submit">Record as sent to admin</button></div>
+            </form>
+          )}
+          {invoiced && !invoiceRef && (
+            <form action={recordInvoiceRefAction} className="row">
+              <input type="hidden" name="visit_id" value={id} />
+              <div className="field"><label htmlFor="inv_ref">Invoice number from admin</label><input id="inv_ref" name="external_ref" required /></div>
+              <div className="actions"><button type="submit">Record invoice number</button></div>
+            </form>
+          )}
+        </>) : <p className="small">Invoicing is handled by a user with pricing access.</p>}
+      </Step>
+
+      <Step n={5} hint="The customer-friendly service notes to share with the client.">
+        <p><a className="btn secondary" href={`/visits/${id}/export?kind=notes`} target="_blank">Client notes PDF{approved ? '' : ' (draft)'}</a></p>
+      </Step>
 
       <h2>Corrections</h2>
       <p><a className="btn secondary" href={`/visits/${id}/correct`}>Correct this record</a></p>
@@ -87,28 +139,6 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         <thead><tr><th>When</th><th>Who</th><th>Change</th><th>Reason</th></tr></thead>
         <tbody>{log.map((l, i) => <tr key={i}><td className="nowrap">{l.at}</td><td>{l.by ?? '—'}</td><td>{l.summary}</td><td>{l.reason ?? '—'}</td></tr>)}</tbody>
       </table></div>}
-
-      <h2>Finish</h2>
-      <div className="actions" style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap' }}>
-        <a className="btn secondary" href={`/visits/${id}/export?kind=notes`} target="_blank">Client notes PDF{approved ? '' : ' (draft)'}</a>
-        <a className="btn secondary" href={`/visits/${id}/ids`}>ID update record</a>
-        {canInvoice && <a className="btn secondary" href={`/visits/${id}/export?kind=invoice`} target="_blank">Invoicing sheet PDF (internal)</a>}
-        {!approved && <form action={approveCloseoutAction}><input type="hidden" name="visit_id" value={id} /><button type="submit">Approve client notes</button></form>}
-      </div>
-      {canInvoice && approved && !invoiced && (
-        <form action={sendInvoiceSheetAction} className="row" style={{ marginTop: '1rem' }}>
-          <input type="hidden" name="visit_id" value={id} />
-          <div className="field"><label htmlFor="external_ref">Admin reference (ticket or invoice no.)</label><input id="external_ref" name="external_ref" /></div>
-          <div className="actions"><button type="submit">Record as sent to admin</button></div>
-        </form>
-      )}
-      {canInvoice && invoiced && !invoiceRef && (
-        <form action={recordInvoiceRefAction} className="row" style={{ marginTop: '1rem' }}>
-          <input type="hidden" name="visit_id" value={id} />
-          <div className="field"><label htmlFor="inv_ref">Invoice number from admin</label><input id="inv_ref" name="external_ref" required /></div>
-          <div className="actions"><button type="submit">Record invoice number</button></div>
-        </form>
-      )}
     </>
   );
 }

@@ -107,7 +107,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
 
       {canPrice && (j.money.quoted > 0 || j.money.invoiced > 0) && (<>
         <h2>Quoted vs invoiced</h2>
-        <p>Quoted {money(j.money.quoted)} · Invoiced {money(j.money.invoiced)} · Difference <b style={{ color: j.money.difference ? 'var(--warn, #b45309)' : undefined }}>{money(j.money.difference)}</b></p>
+        <p>Quoted {money(j.money.quoted)} · Invoiced {money(j.money.invoiced)} · Difference <b style={{ color: j.money.difference ? 'var(--warn)' : undefined }}>{money(j.money.difference)}</b></p>
         <p className="small">Quoted is the latest issued version of each WA and Proposal (RFMs are the property's cost). Invoiced is what was sent to admin for this job's visits.</p>
       </>)}
 
