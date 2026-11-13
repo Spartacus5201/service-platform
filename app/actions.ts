@@ -16,6 +16,8 @@ import { AdminError, addUser, resetPassword, setRole, setActive, saveSettings } 
 import { setOverride, clearOverride, ReviewError, type OverrideInput } from '@/src/review/overrides';
 import { importInventory } from '@/src/catalog/import';
 import { getPropertyPrices, parseEquipment, saveSystemNotes, type SystemNotes } from '@/src/documents/systemnotes';
+import { addPhoto, approveCloseout, saveClientText, sendInvoiceSheet, CloseoutError } from '@/src/service/closeout';
+import type { Result } from '@/src/service/record';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 
@@ -23,7 +25,7 @@ const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v ==
 const n = (fd: FormData, k: string): number | null => { const v = s(fd, k); if (v === null) return null; const x = Number(v.replace(/[$,]/g, '')); return Number.isFinite(x) ? x : null; };
 const msgOf = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 const isRedirect = (e: unknown) => typeof e === 'object' && e !== null && 'digest' in e && String((e as { digest: unknown }).digest).startsWith('NEXT_REDIRECT');
-const domainError = (e: unknown) => e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError;
+const domainError = (e: unknown) => e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError || e instanceof CloseoutError;
 
 // ---------- account ----------
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
@@ -327,4 +329,57 @@ export async function purgeNowAction() {
   await requireCan('manage_settings');
   const n = await purgeExpiredImports(await getDb());
   redirect(withMsg('/admin', `${n} expired raw file(s) deleted.`));
+}
+
+// ---------- service notes close-out ----------
+export async function createCloseoutAction(fd: FormData) {
+  const sess = await requireCan('edit_documents');
+  const propertyId = s(fd, 'property_id')!;
+  const back = `/properties/${propertyId}/closeout/new`;
+  const rows = fd.getAll('row').map(String);
+  const events = rows.filter((i) => fd.get(`include_${i}`) === 'on').map((i) => {
+    const action = (s(fd, `action_${i}`) ?? 'inspect_test') as Action;
+    const kind = s(fd, `kind_${i}`) as PartKind | null;
+    return { endpointId: s(fd, `endpoint_${i}`)!, action, issueCode: s(fd, `issue_${i}`), result: (s(fd, `result_${i}`) as Result | null) ?? undefined,
+      readAtService: n(fd, `start_${i}`), endRead: n(fd, `end_${i}`), notes: s(fd, `notes_${i}`),
+      replacements: action === 'replace' && kind ? [{ kind, newHardwareId: s(fd, `newtx_${i}`) }] : undefined };
+  });
+  let visitId: string;
+  try {
+    visitId = (await recordVisit(await getDb(), { propertyId, visitedOn: s(fd, 'visited_on') ?? today(), technician: s(fd, 'technician'), outcome: (s(fd, 'outcome') ?? 'completed') as Outcome,
+      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId, events })).visitId;
+  } catch (e) { if (domainError(e)) redirect(withError(back, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${visitId}`, 'Visit recorded. Review the wording for the client.'));
+}
+
+export async function saveCloseoutAction(fd: FormData) {
+  const sess = await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!;
+  const edits = fd.getAll('event').map(String).map((e) => ({ eventId: e, clientComment: s(fd, `comment_${e}`), extraComment: s(fd, `extra_${e}`) }));
+  try { await saveClientText(await getDb(), id, edits, s(fd, 'summary'), sess.userId); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${id}`, 'Saved. Approve when the wording is final.'));
+}
+
+export async function approveCloseoutAction(fd: FormData) {
+  const sess = await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!;
+  try { await approveCloseout(await getDb(), id, sess.userId); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${id}`, 'Client notes approved.'));
+}
+
+export async function addPhotoAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!; const f = fd.get('photo');
+  if (!(f instanceof File) || f.size === 0) redirect(withError(`/visits/${id}`, 'Choose a photo first.'));
+  try {
+    await addPhoto(await getDb(), id, { endpointId: s(fd, 'endpoint_id'), filename: (f as File).name, mime: (f as File).type, bytes: new Uint8Array(await (f as File).arrayBuffer()), caption: s(fd, 'caption'), includeInClient: fd.get('include') === 'on' });
+  } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${id}`, 'Photo added. Approve again to finalize.'));
+}
+
+export async function sendInvoiceSheetAction(fd: FormData) {
+  const sess = await requireCan('edit_prices');
+  const id = s(fd, 'visit_id')!;
+  try { await sendInvoiceSheet(await getDb(), id, sess.userId, today(), s(fd, 'external_ref')); } catch (e) { if (domainError(e) || e instanceof InvoiceError) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${id}`, 'Recorded as sent to admin.'));
 }

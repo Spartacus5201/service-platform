@@ -20,6 +20,8 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const canImport = can(s.role, 'import_reports'); const canDocs = can(s.role, 'edit_documents'); const canInvoice = can(s.role, 'edit_prices');
   const [sys, propPrices] = await Promise.all([getSystemNotes(db, id), getPropertyPrices(db, id)]);
   const priceRows = [...Object.entries(propPrices), ['', ''], ['', '']].slice(0, Math.max(3, Object.keys(propPrices).length + 1));
+  const visits = canDocs ? (await db.query<{ id: string; visited_on: string; technician: string | null; notes_status: string; units: string }>(
+    `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
   const showPrices = can(s.role, 'view_prices');
   void showPrices;
@@ -36,6 +38,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <div className="stat"><b>{docs.length}</b><span>documents</span></div>
       </div>
       {canInvoice && <p><a className="btn secondary" href={`/properties/${id}/invoicing`}>Invoicing →</a></p>}
+      {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a></p>}
 
       {canImport && <ImportForm propertyId={id} firstImport={units.length === 0} />}
 
@@ -54,6 +57,17 @@ export default async function PropertyPage({ params, searchParams }: { params: P
           {!imports.length && <tr><td colSpan={6} className="small">Nothing imported yet.</td></tr>}
         </tbody>
       </table></div>
+
+      {canDocs && <>
+        <h2>Service notes</h2>
+        <div className="tablewrap"><table>
+          <thead><tr><th>Service date</th><th>Technician</th><th className="n">Units</th><th>Status</th></tr></thead>
+          <tbody>
+            {visits.map((v) => <tr key={v.id}><td><a href={`/visits/${v.id}`}>{v.visited_on}</a></td><td>{v.technician ?? '—'}</td><td className="n">{v.units}</td><td><Badge tone={v.notes_status === 'approved' ? 'ok' : 'warn'}>{v.notes_status}</Badge></td></tr>)}
+            {!visits.length && <tr><td colSpan={4} className="small">No service reports yet.</td></tr>}
+          </tbody>
+        </table></div>
+      </>}
 
       <h2>Documents</h2>
       <div className="tablewrap"><table>

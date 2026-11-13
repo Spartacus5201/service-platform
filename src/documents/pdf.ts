@@ -6,14 +6,14 @@ import { join } from 'node:path';
 import { type Audience, type FrozenContent } from './render';
 import { bySlot, cityLine, groupWork, invoicingCode, totals, unitRows, type WorkGroup } from './layout';
 
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+export const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 // The built-in PDF fonts cover Latin-1 only; anything else becomes "?" rather than garbage.
-const t = (s: unknown) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[^\x09\x0A\x20-\x7E\xA0-\xFF]/g, '?');
-const dateUs = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(2, 4)}` : iso);
+export const t = (s: unknown) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[^\x09\x0A\x20-\x7E\xA0-\xFF]/g, '?');
+export const dateUs = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(2, 4)}` : iso);
 
 const RED = '#c8102e'; const INK = '#1a1a1a'; const MUTED = '#5a5a5a'; const LINE = '#c9c9c9'; const SHADE = '#f1f1f1';
 
-function asset(name: string): Buffer | null {
+export function asset(name: string): Buffer | null {
   for (const dir of [process.env.ASSETS_DIR ?? '', join(process.cwd(), 'assets')].filter(Boolean)) {
     const p = join(dir, name); if (existsSync(p)) return readFileSync(p);
   }

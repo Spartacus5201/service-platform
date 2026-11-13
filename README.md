@@ -135,3 +135,6 @@ Semantic search (pgvector, needs the managed database), the Salesforce read-only
 
 ## Backup and restore
 Admin → **Download a full backup** gives a `.tgz` of the whole database. Restore with the app stopped: `npx tsx scripts/restore.ts <file>`; the existing data folder is renamed `*.before-restore-<time>`, never deleted. Older backups are migrated forward on restore.
+
+## Service notes (close-out)
+Property page → **Record service report**: starts from the latest audit's units; enter action, result, start/end read, new part and transmitter ID, and the technician's comment. The next screen (`/visits/<id>`) shows drafted client wording from fixed phrase templates (no AI; `src/service/phrases.ts`), editable per unit, plus an opening paragraph and photos (JPEG/PNG, up to 8 MB, optionally shown to the client). **Approve** to finalize; any edit returns it to draft. Downloads: **Client notes PDF** (landscape, your template's columns plus Result; photos page) and **Invoicing sheet PDF** (internal only: grouped work, labor default or property price, parts from property price or catalog, warranty lines at $0, charge and invoicing codes). **Record as sent to admin** logs it through the existing invoicing records, so nothing is invoiced twice. Needs `edit_documents` (notes) and `edit_prices` (invoicing sheet).

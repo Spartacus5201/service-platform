@@ -1,8 +1,8 @@
 # Roadmap (order of work)
 
-Done: audit import and rules (99%+ on two real audits), INT rule, Requested by property, WA / Proposal / RFM documents, invoicing codes, WA Notes, unit directory, audit report PDF with repeaters, backup and restore.
+Done: Service Notes part A (service report entry, rules-based client wording, photos, approval, client notes PDF, internal invoicing PDF, record as sent to admin), audit import and rules (99%+ on two real audits), INT rule, Requested by property, WA / Proposal / RFM documents, invoicing codes, WA Notes, unit directory, audit report PDF with repeaters, backup and restore.
 
-1. **Service Notes close-out, part A**: notes and photos, customer-friendly text, client notes PDF, internal invoicing PDF. See SERVICE-NOTES.md.
+1. ~~Service Notes close-out, part A~~ (done).
 2. **Service-history correction screen**: fix mistakes in what close-out writes (it drives warranty).
 3. **Service Notes, part B**: ID update workbook (needs Port/Net stored), then verification against later imports.
 4. **Managed Postgres and deployment package**: needs IT answers (IT-QUESTIONS.md).
