@@ -45,6 +45,9 @@ type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []): Promise<T | undefined> =>
   (await q.query<T>(sql, p)).rows[0];
 
+/** Label as people write it: "000101" -> "101". Labels with letters are kept as given. */
+export const displayLabel = (v: string) => { const t = v.trim(); return /^0+[0-9]+$/.test(t) ? t.replace(/^0+(?=[0-9])/, '') : t; };
+
 export class Registry {
   private aliases = new Map<string, string>();      // "b|u" -> unit_id
   private buildings = new Map<string, string>();    // normalized label -> building_id
@@ -68,10 +71,10 @@ export class Registry {
     if (!this.createMissing) return null;
     let bid = this.buildings.get(b);
     if (!bid) {
-      bid = (await one<{ id: string }>(this.q, `INSERT INTO building (property_id,label) VALUES ($1,$2) RETURNING id`, [this.propertyId, building.trim()]))!.id;
+      bid = (await one<{ id: string }>(this.q, `INSERT INTO building (property_id,label) VALUES ($1,$2) RETURNING id`, [this.propertyId, displayLabel(building)]))!.id;
       this.buildings.set(b, bid);
     }
-    const uid = (await one<{ id: string }>(this.q, `INSERT INTO unit (building_id,current_label) VALUES ($1,$2) RETURNING id`, [bid, unit.trim()]))!.id;
+    const uid = (await one<{ id: string }>(this.q, `INSERT INTO unit (building_id,current_label) VALUES ($1,$2) RETURNING id`, [bid, displayLabel(unit)]))!.id;
     await this.q.query(`INSERT INTO unit_alias (unit_id,property_id,building_label,unit_label,source) VALUES ($1,$2,$3,$4,$5)`, [uid, this.propertyId, b, u, source]);
     this.aliases.set(`${b}|${u}`, uid);
     this.unitsCreated++;

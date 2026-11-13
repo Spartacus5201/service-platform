@@ -4,6 +4,8 @@ import type { Db } from '../db';
 import { LIVE_EVENT } from './record';
 
 type Q = Pick<Db, 'query'>;
+const usd = (d: string) => (/^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d);
+
 export type VerifyStatus = 'pending' | 'verified' | 'failed';
 
 export interface UnitVerification {
@@ -49,13 +51,13 @@ async function check(q: Q, e: EventRow): Promise<UnitVerification> {
   if (useAudit && audit) {
     const code = (audit.audit_result ?? '').trim().toUpperCase();
     if (e.replaced_tx && e.old_mdid && audit.amr_id === e.old_mdid && audit.amr_id !== e.new_mdid)
-      return { ...base, status: 'failed', evidence: `Audit ending ${audit.ended} still lists the old ID ${e.old_mdid}. The billing system or read file needs the new ID ${e.new_mdid ?? ''}.`, on: audit.on };
-    if (code === 'OK') return { ...base, status: 'verified', evidence: `Audit ending ${audit.ended}: OK.`, on: audit.on };
-    if (code === 'NI' && e.vacant) return { ...base, status: 'verified', evidence: `Audit ending ${audit.ended}: no increment on a vacant unit.`, on: audit.on };
-    if (EQUIPMENT_CODES.includes(code)) return { ...base, status: 'failed', evidence: `Audit ending ${audit.ended} still reports ${code}.`, on: audit.on };
-    return { ...base, status: 'pending', evidence: `Audit ending ${audit.ended} reports ${code || 'no result'}; property to investigate usage.`, on: audit.on };
+      return { ...base, status: 'failed', evidence: `Audit ending ${usd(audit.ended)} still lists the old ID ${e.old_mdid}. The billing system or read file needs the new ID ${e.new_mdid ?? ''}.`, on: audit.on };
+    if (code === 'OK') return { ...base, status: 'verified', evidence: `Audit ending ${usd(audit.ended)}: OK.`, on: audit.on };
+    if (code === 'NI' && e.vacant) return { ...base, status: 'verified', evidence: `Audit ending ${usd(audit.ended)}: no increment on a vacant unit.`, on: audit.on };
+    if (EQUIPMENT_CODES.includes(code)) return { ...base, status: 'failed', evidence: `Audit ending ${usd(audit.ended)} still reports ${code}.`, on: audit.on };
+    return { ...base, status: 'pending', evidence: `Audit ending ${usd(audit.ended)} reports ${code || 'no result'}; property to investigate usage.`, on: audit.on };
   }
-  if (evCheck) return { ...base, status: 'verified', evidence: `Transmitter checked in ${evCheck.on}.`, on: evCheck.on };
+  if (evCheck) return { ...base, status: 'verified', evidence: `Transmitter checked in ${usd(evCheck.on)}.`, on: evCheck.on };
   return { ...base, status: 'pending', evidence: 'No audit or check-in since the visit yet.', on: null };
 }
 

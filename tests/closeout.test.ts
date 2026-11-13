@@ -33,8 +33,8 @@ describe('close-out', () => {
   it('builds notes, counts issues, and requires approval before invoicing is sent', async () => {
     const { db, pid, ep } = await setup();
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T. Tech', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'replace', issueCode: 'NT', readAtService: 100, endRead: 101, notes: 'tight space', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] },
-      { endpointId: ep('000103'), action: 'inspect_test', issueCode: 'NI', notes: 'meter ok' },
+      { endpointId: ep('102'), action: 'replace', issueCode: 'NT', readAtService: 100, endRead: 101, notes: 'tight space', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] },
+      { endpointId: ep('103'), action: 'inspect_test', issueCode: 'NI', notes: 'meter ok' },
     ] });
     const c = await closeoutData(db, r.visitId);
     expect(c.units).toHaveLength(2);
@@ -57,7 +57,7 @@ describe('close-out', () => {
   it('prices the invoicing sheet: labor default, warranty zeroed, grouped, sent once', async () => {
     const { db, pid, ep } = await setup();
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'inspect_test', issueCode: 'NT' }, { endpointId: ep('000104'), action: 'inspect_test', issueCode: 'NT' } ] });
+      { endpointId: ep('102'), action: 'inspect_test', issueCode: 'NT' }, { endpointId: ep('104'), action: 'inspect_test', issueCode: 'NT' } ] });
     const s = await invoiceSheet(db, r.visitId);
     expect(s.groups).toHaveLength(1);                         // identical work grouped
     expect(s.groups[0].quantity).toBe(2);
@@ -70,7 +70,7 @@ describe('close-out', () => {
 
   it('accepts only JPEG or PNG photos and reopens approval', async () => {
     const { db, pid, ep } = await setup();
-    const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [{ endpointId: ep('000102'), action: 'inspect_test', issueCode: 'NT' }] });
+    const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [{ endpointId: ep('102'), action: 'inspect_test', issueCode: 'NT' }] });
     await approveCloseout(db, r.visitId, null);
     await expect(addPhoto(db, r.visitId, { filename: 'x.gif', mime: 'image/gif', bytes: new Uint8Array(3) })).rejects.toThrow(/JPEG/);
     await addPhoto(db, r.visitId, { filename: 'a b.jpg', mime: 'image/jpeg', bytes: new Uint8Array(3), includeInClient: true });
@@ -84,7 +84,7 @@ describe('close-out PDFs', () => {
   it('renders client notes and the internal invoicing sheet', async () => {
     const { db, pid, ep } = await setup();
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T. Tech', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'replace', issueCode: 'NT', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
+      { endpointId: ep('102'), action: 'replace', issueCode: 'NT', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
     const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
     const notes = await renderNotesPdf(await closeoutData(db, r.visitId), [{ caption: 'Before', where: '1-102', mime: 'image/png', bytes: png }]);
     expect(Buffer.from(notes).subarray(0, 4).toString()).toBe('%PDF');

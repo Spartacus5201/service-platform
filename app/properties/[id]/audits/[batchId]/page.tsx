@@ -8,7 +8,7 @@ import { ACTIONS } from '@/src/review/overrides';
 import { stagedLines, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { createDocumentAction, overrideAction } from '../../../../actions';
 import { openJobs } from '@/src/jobs/jobs';
-import { Badge, Flash, actionTone, warrantyTone, one, type SP } from '../../../../ui';
+import { Badge, Flash, actionTone, warrantyTone, one, us, type SP } from '../../../../ui';
 
 export default async function AuditReview({ params, searchParams }: { params: Promise<{ id: string; batchId: string }>; searchParams: SP }) {
   const s = await requireSession();
@@ -62,7 +62,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
         <tbody>
           {lines.map((l) => (
             <tr key={l.readingId} className={l.recommendation.action === 'No action' ? 'muted' : ''}>
-              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}{l.lowBattery && <> <Badge tone="warn">{l.recommendation.action === 'No action' ? 'PM · ' : ''}battery {l.lowBattery.level === null ? 'low' : `${l.lowBattery.level}%`} since {l.lowBattery.since}</Badge></>}</td>
+              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}{l.lowBattery && <> <Badge tone="warn">{l.recommendation.action === 'No action' ? 'PM · ' : ''}battery {l.lowBattery.level === null ? 'low' : `${l.lowBattery.level}%`} since {us(l.lowBattery.since)}</Badge></>}</td>
               <td><Badge tone={actionTone(l.recommendation.action)}>{l.recommendation.action}</Badge>{l.override && <> <Badge tone="info">edited</Badge></>}{l.recommendation.owner ? <span className="small"> · {l.recommendation.owner}</span> : null}{l.recommendation.component ? <span className="small"> · {l.recommendation.component}</span> : null}</td>
               <td className="small">{l.recommendation.reason}</td>
               <td className="small">{l.recommendation.action === 'No action' ? '' : (
@@ -74,7 +74,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
               <td className="small">{(() => { const g = stage.get(l.readingId); if (!g) return null; return (<>
                 <Badge tone={stageTone(g.stage)}>{STAGE_LABEL[g.stage]}</Badge>
                 {g.doc && (g.stage === 'on_document') && <> <a href={`/documents/${g.doc.id}`}>{g.doc.number}</a>{g.doc.issued ? '' : ' (draft)'}</>}
-                {g.lastVisit && g.stage !== 'on_document' && <> <a href={`/visits/${g.lastVisit.visitId}`}>visit {g.lastVisit.visitedOn}</a></>}
+                {g.lastVisit && g.stage !== 'on_document' && <> <a href={`/visits/${g.lastVisit.visitId}`}>visit {us(g.lastVisit.visitedOn)}</a></>}
               </>); })()}</td>
               {canDocs && (
                 <td>

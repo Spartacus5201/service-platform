@@ -79,9 +79,9 @@ export async function saveSystemNotesAction(fd: FormData) {
   const prices: Record<string, number> = can(sess.role, 'edit_prices') ? {} : await getPropertyPrices(db, id);
   if (can(sess.role, 'edit_prices')) for (const i of [1, 2, 3, 4, 5]) { const item = s(fd, `price_item_${i}`); const v = n(fd, `price_${i}`); if (item && v !== null) prices[item] = v; }
   try { await saveSystemNotes(db, id, notes, prices, fd.get('msa') === 'on', sess.userId); }
-  catch (e) { redirect(withError(`/properties/${id}`, e instanceof Error ? e.message : 'Could not save WA Notes.')); }
+  catch (e) { redirect(withError(`/properties/${id}?tab=settings`, e instanceof Error ? e.message : 'Could not save WA Notes.')); }
   revalidatePath(`/properties/${id}`);
-  redirect(withMsg(`/properties/${id}`, 'WA Notes saved.'));
+  redirect(withMsg(`/properties/${id}?tab=settings`, 'WA Notes saved.'));
 }
 
 export async function updateProperty(fd: FormData) {
@@ -90,7 +90,7 @@ export async function updateProperty(fd: FormData) {
   await (await getDb()).query(
     `UPDATE property SET name=$2, address=$3, billing_code=$4, installed_by_us=$5, install_completed_on=$6, salesforce_account_ref=$7, access_notes=$8, scheduling_notes=$9, billing_contract=$10, city=$11, state=$12, zip=$13 WHERE id=$1`,
     [id, s(fd, 'name'), s(fd, 'address'), s(fd, 'billing_code'), fd.get('installed_by_us') === 'on', s(fd, 'install_completed_on'), s(fd, 'salesforce_account_ref'), s(fd, 'access_notes'), s(fd, 'scheduling_notes'), fd.get('billing_contract') === 'on', s(fd, 'city'), s(fd, 'state'), s(fd, 'zip')]);
-  redirect(withMsg(`/properties/${id}`, 'Property saved.'));
+  redirect(withMsg(`/properties/${id}?tab=settings`, 'Property saved.'));
 }
 
 // ---------- imports ----------
@@ -136,7 +136,7 @@ export async function createDocumentAction(fd: FormData) {
     redirect(`/documents/${d.documentId}`);
   } catch (e) {
     if (isRedirect(e)) throw e;
-    if (domainError(e)) redirect(withError(batchId ? `/properties/${propertyId}/audits/${batchId}` : `/properties/${propertyId}`, msgOf(e)));
+    if (domainError(e)) redirect(withError(batchId ? `/properties/${propertyId}/audits/${batchId}` : `/properties/${propertyId}?tab=work`, msgOf(e)));
     throw e;
   }
 }
@@ -409,7 +409,7 @@ export async function createJobAction(fd: FormData) {
   const propertyId = s(fd, 'property_id')!;
   let id: string;
   try { id = await createJob(await getDb(), { propertyId, ...jobFields(fd), createdBy: sess.userId }); }
-  catch (e) { if (e instanceof JobError) redirect(withError(`/properties/${propertyId}`, e.message)); throw e; }
+  catch (e) { if (e instanceof JobError) redirect(withError(`/properties/${propertyId}?tab=work`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Job created.'));
 }
 export async function updateJobAction(fd: FormData) {

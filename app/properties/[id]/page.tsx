@@ -38,14 +38,19 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const lowCount = canDocs ? (await lowBatteryDevices(db, { propertyId: id })).length : 0;
   const stages = latest ? countStages(await stagedLines(db, latest.id, today())) : null;
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
-  const showPrices = can(s.role, 'view_prices');
-  void showPrices;
+  const TABS = [['overview', 'Overview'], ...(canDocs ? [['work', 'Jobs & documents']] : []), ['audits', 'Audits & imports'], ['units', 'Units'], ...(canDocs || canImport ? [['settings', 'Settings']] : [])] as [string, string][];
+  const tab = TABS.some(([k]) => k === one(sp.tab)) ? one(sp.tab)! : 'overview';
+  const q = (one(sp.q) ?? '').trim().toLowerCase();
+  const shownUnits = q ? units.filter((u) => [u.building, u.unit, u.address, u.transmitter].some((x) => (x ?? '').toLowerCase().includes(q))) : units;
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / {p.name}</div>
       <h1>{p.name} <span className="small">ClassID {p.class_id}</span></h1>
-      <p className="sub">{p.address ?? 'No address yet'} · {p.installed_by_us ? `Installed by us${p.install_completed_on ? `, completed ${p.install_completed_on}` : ''}` : 'Not installed by us (no install warranty)'}</p>
+      <p className="sub">{p.address ?? 'No address yet'} · {p.installed_by_us ? `Installed by us${p.install_completed_on ? `, completed ${us(p.install_completed_on)}` : ''}` : 'Not installed by us (no install warranty)'}</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
+      <nav className="tabs" aria-label="Property sections">{TABS.map(([k, label]) => <a key={k} href={`?tab=${k}`} className={tab === k ? 'on' : ''} aria-current={tab === k ? 'page' : undefined}>{label}</a>)}</nav>
+
+      {tab === 'overview' && (<>
       <div className="stats">
         <div className="stat"><b>{units.length}</b><span>endpoints</span></div>
         <div className="stat"><b>{vacant}</b><span>vacant units</span></div>
@@ -53,13 +58,27 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <div className="stat"><b>{docs.length}</b><span>documents</span></div>
       </div>
       {stages && latest && Object.values(stages).some(Boolean) && (
-        <p className="small">Latest audit ({latest.on}), flagged units: {(Object.keys(stages) as UnitStage[]).filter((k) => stages[k]).map((k) => `${STAGE_LABEL[k]} ${stages[k]}`).join(' · ')} · <a href={`/properties/${id}/audits/${latest.id}`}>open audit</a></p>
+        <p className="small">Latest audit ({us(latest.on)}), flagged units: {(Object.keys(stages) as UnitStage[]).filter((k) => stages[k]).map((k) => `${STAGE_LABEL[k]} ${stages[k]}`).join(' · ')} · <a href={`/properties/${id}/audits/${latest.id}`}>open audit</a></p>
       )}
       {canInvoice && <p><a className="btn secondary" href={`/properties/${id}/invoicing`}>Invoicing →</a></p>}
       {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
 
-      {canImport && <ImportForm propertyId={id} firstImport={units.length === 0} />}
+      {canDocs && jobs.length > 0 && (<>
+        <h2>Open jobs</h2>
+        <ul>{jobs.map((j) => <li key={j.id}><a href={`/jobs/${j.id}`}>#{j.number} {j.title}</a> <StageBadge stage={j.stage} /></li>)}</ul>
+      </>)}
+      {issues.length > 0 && <p className="flash"><b>{issues.length} import problem(s)</b> to resolve. <a href={`?tab=audits#import-problems`}>Open</a></p>}
+      {fups.length > 0 && <>
+        <h2>Needs follow-up</h2>
+        <div className="tablewrap"><table>
+          <thead><tr><th>Unit</th><th>Last service</th><th>Why</th></tr></thead>
+          <tbody>{fups.map((f) => <tr key={f.eventId}><td className="nowrap"><a href={`/endpoints/${f.endpointId}`}>{f.building}-{f.unit} {f.service}</a></td><td className="nowrap"><a href={`/visits/${f.visitId}`}>{us(f.visitedOn)}</a></td><td className="small">{f.evidence}</td></tr>)}</tbody>
+        </table></div>
+      </>}
 
+      </>)}
+
+      {tab === 'work' && (<>
       {canDocs && (<>
         <h2>Jobs</h2>
         <div className="tablewrap"><table>
@@ -89,37 +108,12 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <p><a href={`/jobs?property=${id}`}>All jobs for this property, including closed →</a></p>
       </>)}
 
-      <ImportIssues issues={issues} propertyId={id} back={`/properties/${id}`} />
-      <h2>Imports</h2>
-      <div className="tablewrap"><table>
-        <thead><tr><th>When</th><th>Report</th><th>File</th><th>Summary</th><th>Raw file</th><th></th></tr></thead>
-        <tbody>
-          {imports.map((i) => (
-            <tr key={i.id}>
-              <td className="nowrap">{i.imported_at.slice(0, 16).replace('T', ' ')}</td><td>{KIND[i.kind] ?? i.kind}</td><td>{i.filename ?? '—'}</td>
-              <td className="small">{[i.summary.readings && `${i.summary.readings} readings`, i.summary.occupancyUpdated && `${i.summary.occupancyUpdated} occupancy`, i.summary.checkins && `${i.summary.checkins} check-ins`, i.summary.unitsCreated && `${i.summary.unitsCreated} units added`].filter(Boolean).join(' · ') || '—'}</td>
-              <td className="small">{i.raw_file ? `kept until ${i.purge_after}` : 'discarded'}</td>
-              <td>{(i.kind === 'auto_audit' || i.kind === 'manual_audit') && <a href={`/properties/${id}/audits/${i.id}`}>Review →</a>}</td>
-            </tr>
-          ))}
-          {!imports.length && <tr><td colSpan={6} className="small">Nothing imported yet.</td></tr>}
-        </tbody>
-      </table></div>
-
-      {fups.length > 0 && <>
-        <h2>Needs follow-up</h2>
-        <div className="tablewrap"><table>
-          <thead><tr><th>Unit</th><th>Last service</th><th>Why</th></tr></thead>
-          <tbody>{fups.map((f) => <tr key={f.eventId}><td className="nowrap"><a href={`/endpoints/${f.endpointId}`}>{f.building}-{f.unit} {f.service}</a></td><td className="nowrap"><a href={`/visits/${f.visitId}`}>{f.visitedOn}</a></td><td className="small">{f.evidence}</td></tr>)}</tbody>
-        </table></div>
-      </>}
-
       {canDocs && <>
         <h2>Service notes</h2>
         <div className="tablewrap"><table>
           <thead><tr><th>Service date</th><th>Technician</th><th className="n">Units</th><th>Status</th></tr></thead>
           <tbody>
-            {visits.map((v) => <tr key={v.id}><td><a href={`/visits/${v.id}`}>{v.visited_on}</a></td><td>{v.technician ?? '—'}</td><td className="n">{v.units}</td><td><Badge tone={v.notes_status === 'approved' ? 'ok' : 'warn'}>{v.notes_status}</Badge></td></tr>)}
+            {visits.map((v) => <tr key={v.id}><td><a href={`/visits/${v.id}`}>{us(v.visited_on)}</a></td><td>{v.technician ?? '—'}</td><td className="n">{v.units}</td><td><Badge tone={v.notes_status === 'approved' ? 'ok' : 'warn'}>{v.notes_status}</Badge></td></tr>)}
             {!visits.length && <tr><td colSpan={4} className="small">No service reports yet.</td></tr>}
           </tbody>
         </table></div>
@@ -131,7 +125,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <tbody>
           {docs.map((d) => (
             <tr key={d.id}><td><a href={`/documents/${d.id}`}>{d.number}</a></td><td>{d.type}</td><td>{d.title ?? '—'}</td><td>{d.salesforce_case ?? '—'}</td>
-              <td>v{d.version} <Badge tone={d.status === 'issued' ? 'ok' : 'warn'}>{d.status}</Badge></td><td>{d.quote_valid_until ?? '—'}</td></tr>
+              <td>v{d.version} <Badge tone={d.status === 'issued' ? 'ok' : 'warn'}>{d.status}</Badge></td><td>{d.quote_valid_until ? us(d.quote_valid_until) : '—'}</td></tr>
           ))}
           {!docs.length && <tr><td colSpan={6} className="small">No documents yet. Start one from an audit review{canDocs ? ' or build an RFM below' : ''}.</td></tr>}
         </tbody>
@@ -147,22 +141,53 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         </form>
       )}
 
+      </>)}
+
+      {tab === 'audits' && (<>
+      {canImport && <ImportForm propertyId={id} firstImport={units.length === 0} />}
+      <ImportIssues issues={issues} propertyId={id} back={`/properties/${id}?tab=audits`} />
+      <h2>Imports</h2>
+      <div className="tablewrap"><table>
+        <thead><tr><th>When</th><th>Report</th><th>File</th><th>Summary</th><th>Raw file</th><th></th></tr></thead>
+        <tbody>
+          {imports.map((i) => (
+            <tr key={i.id}>
+              <td className="nowrap">{us(i.imported_at)} {i.imported_at.slice(11, 16)}</td><td>{KIND[i.kind] ?? i.kind}</td><td>{i.filename ?? '—'}</td>
+              <td className="small">{[i.summary.readings && `${i.summary.readings} readings`, i.summary.occupancyUpdated && `${i.summary.occupancyUpdated} occupancy`, i.summary.checkins && `${i.summary.checkins} check-ins`, i.summary.unitsCreated && `${i.summary.unitsCreated} units added`].filter(Boolean).join(' · ') || '—'}</td>
+              <td className="small">{i.raw_file ? `kept until ${us(i.purge_after)}` : 'discarded'}</td>
+              <td>{(i.kind === 'auto_audit' || i.kind === 'manual_audit') && <a href={`/properties/${id}/audits/${i.id}`}>Review →</a>}</td>
+            </tr>
+          ))}
+          {!imports.length && <tr><td colSpan={6} className="small">Nothing imported yet.</td></tr>}
+        </tbody>
+      </table></div>
+
+      </>)}
+
+      {tab === 'units' && (<>
       <h2>Units and endpoints</h2>
+      <form method="get" className="row"><input type="hidden" name="tab" value="units" />
+        <div className="field" style={{ flex: 2 }}><label htmlFor="uq">Find a unit, address or transmitter</label><input id="uq" name="q" defaultValue={one(sp.q) ?? ''} /></div>
+        <div className="field"><button type="submit" className="secondary">Find</button></div></form>
+      <p className="small">Click a unit for its complete service history.</p>
       <div className="tablewrap"><table>
         <thead><tr><th>Bldg</th><th>Unit</th><th>Address</th><th>Service</th><th>Transmitter</th><th>Occupancy</th><th>Last check-in</th></tr></thead>
         <tbody>
-          {units.map((u) => (
+          {shownUnits.map((u) => (
             <tr key={u.endpointId}>
               <td>{u.building}</td><td><a href={`/endpoints/${u.endpointId}`}>{u.unit}</a></td><td>{u.address ?? '—'}</td>
               <td>{u.service} {u.isManual && <Badge tone="info">manual</Badge>}</td><td>{u.transmitter ?? '—'}</td>
-              <td>{!u.occupancyKnown ? <Badge>unknown</Badge> : u.moveInOn ? <Badge tone="ok">since {u.moveInOn}</Badge> : <Badge tone="warn">vacant</Badge>}</td>
-              <td className="small">{u.lastCheckIn ? u.lastCheckIn.slice(0, 16).replace('T', ' ') : '—'}</td>
+              <td>{!u.occupancyKnown ? <Badge>unknown</Badge> : u.moveInOn ? <Badge tone="ok">since {us(u.moveInOn)}</Badge> : <Badge tone="warn">vacant</Badge>}</td>
+              <td className="small">{u.lastCheckIn ? `${us(u.lastCheckIn)} ${u.lastCheckIn.slice(11, 16)}` : '—'}</td>
             </tr>
           ))}
           {!units.length && <tr><td colSpan={7} className="small">No units yet. Import an audit with “Add units” ticked.</td></tr>}
         </tbody>
       </table></div>
 
+      </>)}
+
+      {tab === 'settings' && (<>
       {canDocs && (
         <form action={saveSystemNotesAction} className="card" style={{ marginTop: '1.25rem' }}>
           <h2 style={{ marginTop: 0 }}>WA Notes</h2>
@@ -234,6 +259,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
           <div className="actions"><button type="submit">Save details</button></div>
         </form>
       )}
+      </>)}
     </>
   );
 }

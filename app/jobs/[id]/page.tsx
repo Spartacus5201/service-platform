@@ -64,7 +64,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
           <div className="field"><button type="submit" className="secondary">Attach</button></div>
         </form>
       )}
-      {open && !freeAudits.length && !j.audits.length && <p className="small">Import the audit on the <a href={`/properties/${j.propertyId}`}>property page</a>, then attach it here.</p>}
+      {open && !freeAudits.length && !j.audits.length && <p className="small">Import the audit on the <a href={`/properties/${j.propertyId}?tab=audits`}>property page</a>, then attach it here.</p>}
 
       <h2>Documents</h2>
       {j.documents.length ? (

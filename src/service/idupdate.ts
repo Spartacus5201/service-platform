@@ -6,6 +6,9 @@ import { LIVE_EVENT, ServiceError } from './record';
 
 type Q = Pick<Db, 'query'>;
 
+/** The billing system's building / unit numbers are zero-padded (0001 / 000217); screens show them without the zeros. */
+export const billingNbr = (label: string, width: number) => (/^[0-9]+$/.test(label.trim()) ? label.trim().padStart(width, '0') : label.trim());
+
 export interface IdUpdateRow {
   id: string; endpointId: string; building: string; unit: string; address: string | null; service: string;
   oldMdid: string | null; oldMiuid: string | null; oldPort: string; oldNet: string;
@@ -98,7 +101,7 @@ export async function idUpdateXlsx(db: Db, visitId: string, meta: { property: st
   rows.forEach((r, i) => {
     const n = i + 3;
     const set = (col: string, v: unknown) => { ws.getCell(`${col}${n}`).value = v as never; };
-    set('A', r.address ?? ''); set('B', r.building); set('C', r.unit); set('D', r.oldMdid ?? ''); set('E', r.oldMiuid ?? ''); set('F', Number(r.oldPort)); set('G', Number(r.oldNet));
+    set('A', r.address ?? ''); set('B', billingNbr(r.building, 4)); set('C', billingNbr(r.unit, 6)); set('D', r.oldMdid ?? ''); set('E', r.oldMiuid ?? ''); set('F', Number(r.oldPort)); set('G', Number(r.oldNet));
     set('H', { formula: `E${n}&D${n}&F${n}&G${n}` }); set('I', { formula: `IF(D${n}=K${n},TRUE,FALSE)` }); set('J', { formula: `IF(E${n}=L${n},TRUE,FALSE)` });
     set('K', r.newMdid ?? ''); set('L', r.newMiuid ?? ''); set('M', Number(r.newPort)); set('N', Number(r.newNet)); set('P', { formula: `L${n}&K${n}&M${n}&N${n}` });
     set('R', r.systemType ?? ''); set('S', r.meterType ?? '');
@@ -113,7 +116,7 @@ export async function idUpdateXlsx(db: Db, visitId: string, meta: { property: st
   ['Bldg', 'Unit', 'Old Meter ID', 'New Meter ID', 'True/False', '', 'Recoup Date'].forEach((t, i) => { const c = rc.getCell(1, i + 1); c.value = t; c.font = bold; });
   rows.filter((r) => r.recoup).forEach((r, i) => {
     const n = i + 2;
-    rc.getCell(`A${n}`).value = r.building; rc.getCell(`B${n}`).value = r.unit;
+    rc.getCell(`A${n}`).value = billingNbr(r.building, 4); rc.getCell(`B${n}`).value = billingNbr(r.unit, 6);
     rc.getCell(`C${n}`).value = meterKey(r.oldMiuid, r.oldMdid, r.oldPort, r.oldNet); rc.getCell(`D${n}`).value = meterKey(r.newMiuid, r.newMdid, r.newPort, r.newNet);
     rc.getCell(`E${n}`).value = { formula: `C${n}=D${n}` }; rc.getCell(`G${n}`).value = meta.visitedOn;
   });

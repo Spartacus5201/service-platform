@@ -4,7 +4,7 @@
 import type { Db } from '../db';
 import { normLabel } from '../parsers/common';
 
-export type HitKind = 'property' | 'unit' | 'device' | 'service' | 'document';
+export type HitKind = 'property' | 'unit' | 'device' | 'service' | 'document' | 'job';
 export interface Hit { kind: HitKind; title: string; sub: string; href: string; note?: string; rank: number }
 export interface SearchOptions { includeDocuments: boolean; perKind?: number }
 
@@ -72,6 +72,11 @@ export async function search(db: Db, q: string, o: SearchOptions): Promise<Hit[]
       sub: `${r.property}${r.kase ? ` · Case ${r.kase}` : ''}${r.wo ? ` · WO ${r.wo}` : ''}`, note: r.notes ?? undefined, href: `/endpoints/${r.endpoint_id}` });
 
   if (o.includeDocuments) {
+    for (const r of (await db.query<{ id: string; number: number; title: string; property: string; kase: string | null; closed: boolean; rank: number }>(
+      `SELECT j.id, j.number, j.title, p.name property, j.salesforce_case kase, j.closed_on IS NOT NULL closed, ${exact(['j.salesforce_case', `'#' || j.number`])} rank
+         FROM job j JOIN property p ON p.id=j.property_id
+        WHERE ${where(`concat_ws(' ', '#' || j.number, j.title, j.salesforce_case, j.requested_by, j.request_notes, p.name)`)} ORDER BY rank, j.requested_on DESC LIMIT ${per}`, args)).rows)
+      hits.push({ kind: 'job', rank: r.rank, title: `Job #${r.number} ${r.title}`, sub: `${r.property}${r.kase ? ` · Case ${r.kase}` : ''}${r.closed ? ' · closed' : ''}`, href: `/jobs/${r.id}` });
     for (const r of (await db.query<{ id: string; number: string; type: string; title: string | null; property: string; kase: string | null; wo: string | null; rank: number }>(
       `SELECT d.id, d.number, d.type, d.title, p.name property, d.salesforce_case kase, d.salesforce_work_order wo, ${exact(['d.number', 'd.salesforce_case', 'd.salesforce_work_order'])} rank
          FROM document d JOIN property p ON p.id=d.property_id

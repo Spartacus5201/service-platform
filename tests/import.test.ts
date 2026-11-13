@@ -32,10 +32,10 @@ describe('Auto Audit import', () => {
     const u = await db.query<{ current_label: string; move_in_on: string | null; prior_move_out_on: string | null }>(
       `SELECT current_label, move_in_on::text, prior_move_out_on::text FROM unit ORDER BY current_label`);
     const by = Object.fromEntries(u.rows.map((x) => [x.current_label, x]));
-    expect(by['000101'].move_in_on).toBe('2022-03-01');
-    expect(by['000101'].prior_move_out_on).toBeNull();
-    expect(by['000103'].move_in_on).toBeNull();                  // 01/01/00 first date = vacant
-    expect(by['000102'].prior_move_out_on).toBe('2025-02-28');
+    expect(by['101'].move_in_on).toBe('2022-03-01');
+    expect(by['101'].prior_move_out_on).toBeNull();
+    expect(by['103'].move_in_on).toBeNull();                  // 01/01/00 first date = vacant
+    expect(by['102'].prior_move_out_on).toBe('2025-02-28');
   });
 
   it('re-importing the same bytes changes nothing', async () => {

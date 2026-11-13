@@ -4,7 +4,7 @@ import { can } from '@/src/auth/auth';
 import { search, type Hit, type HitKind } from '@/src/search/search';
 import { Badge, one, type SP } from '../ui';
 
-const GROUPS: [HitKind, string][] = [['property', 'Properties'], ['unit', 'Units'], ['device', 'Devices'], ['service', 'Service history'], ['document', 'Documents']];
+const GROUPS: [HitKind, string][] = [['property', 'Properties'], ['unit', 'Units'], ['device', 'Devices'], ['service', 'Service history'], ['job', 'Jobs'], ['document', 'Documents']];
 
 export default async function SearchPage({ searchParams }: { searchParams: SP }) {
   const s = await requireSession();

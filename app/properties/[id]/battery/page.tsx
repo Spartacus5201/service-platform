@@ -4,7 +4,7 @@ import { requireCan } from '@/src/server/session';
 import { today } from '@/src/server/dates';
 import { getProperty } from '@/src/server/queries';
 import { lowBatteryReport, pmSettings } from '@/src/service/battery';
-import { Badge, money } from '../../../ui';
+import { Badge, money, us } from '../../../ui';
 
 export default async function Battery({ params }: { params: Promise<{ id: string }> }) {
   await requireCan('edit_documents');
@@ -27,7 +27,7 @@ export default async function Battery({ params }: { params: Promise<{ id: string
           {rows.map((r) => (
             <tr key={r.deviceId}>
               <td className="nowrap">{r.endpointId ? <a href={`/endpoints/${r.endpointId}`}>{r.building}-{r.unit}</a> : '—'}</td><td>{r.service ?? ''}</td><td>{r.hardwareId}</td><td>{r.model ?? ''}</td><td>{r.batteryLevel === null ? 'low' : `${r.batteryLevel}%`}{(r.batteryLevel === null || r.batteryLevel <= pm.waThreshold) && <> <Badge tone="warn">WA</Badge></>}</td>
-              <td>{r.firstLowOn}</td><td>{r.lastCheckIn}{r.stopped && <> <Badge tone="bad">stopped</Badge></>}</td>
+              <td>{us(r.firstLowOn)}</td><td>{us(r.lastCheckIn)}{r.stopped && <> <Badge tone="bad">stopped</Badge></>}</td>
               <td>{r.auditCode ?? '—'}{r.failing && <> <Badge tone="bad">also failing</Badge></>}</td>
               <td className="n">{money(r.batteryPrice)}</td>
               <td>{r.partCovered ? <Badge tone="ok">covered</Badge> : <Badge>{r.partWarranty}</Badge>}</td>

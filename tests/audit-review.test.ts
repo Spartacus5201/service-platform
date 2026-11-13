@@ -18,12 +18,12 @@ describe('audit review lines', () => {
     const r = await importParsed(db, pid, parseAutoAudit(autoAuditGrid()), { createMissing: true });
     const lines = await auditLines(db, r.batchId!, '2026-11-06');
     const by = Object.fromEntries(lines.map((l) => [l.unit.trim(), l]));
-    expect(by['000101'].recommendation.action).toBe('No action');           // OK
-    expect(by['000102'].recommendation.action).toBe('Needs Service');       // NT
-    expect(by['000103'].recommendation.action).toBe('No action');           // NI on a vacant unit
-    expect(by['000104'].recommendation).toMatchObject({ action: 'Investigate', owner: 'property' });   // HIGH
-    expect(by['000201'].recommendation.action).toBe('Investigate');         // LOW on an occupied unit
-    expect(by['000202'].recommendation.action).toBe('Unrecognized');        // unknown code is surfaced
+    expect(by['101'].recommendation.action).toBe('No action');           // OK
+    expect(by['102'].recommendation.action).toBe('Needs Service');       // NT
+    expect(by['103'].recommendation.action).toBe('No action');           // NI on a vacant unit
+    expect(by['104'].recommendation).toMatchObject({ action: 'Investigate', owner: 'property' });   // HIGH
+    expect(by['201'].recommendation.action).toBe('Investigate');         // LOW on an occupied unit
+    expect(by['202'].recommendation.action).toBe('Unrecognized');        // unknown code is surfaced
     expect(needsAction(lines)).toHaveLength(4);
   });
 
@@ -33,7 +33,7 @@ describe('audit review lines', () => {
     // strip the date range so no occupancy is parsed
     for (let i = 2; i < grid.length; i++) grid[i][19] = String(grid[i][19]).replace(/ \d\d\/\d\d\/\d\d-\d\d\/\d\d\/\d\d$/, '');
     const r = await importParsed(db, pid, parseAutoAudit(grid), { createMissing: true });
-    const ni = (await auditLines(db, r.batchId!, '2026-11-06')).find((l) => l.unit.trim() === '000103')!;
+    const ni = (await auditLines(db, r.batchId!, '2026-11-06')).find((l) => l.unit.trim() === '103')!;
     expect(ni.occupied).toBeNull();
     expect(ni.recommendation.action).toBe('Needs Service');
     expect(ni.recommendation.reason).toContain('occupancy unknown');
@@ -44,7 +44,7 @@ describe('audit review lines', () => {
     const r = await importParsed(db, pid, parseManualAudit(manualAuditGrid()), { createMissing: true });
     const lines = await auditLines(db, r.batchId!, '2026-11-06');
     const act = Object.fromEntries(lines.map((l) => [l.unit.trim(), l.recommendation.action]));
-    expect(act).toMatchObject({ '000101': 'No action', '000102': 'Needs Service', '000103': 'No action', '000104': 'Needs Service', '000105': 'No action', '000106': 'No action' });   // 106: MANUAL via ManufacturerID, 1 read, so no flag
+    expect(act).toMatchObject({ '101': 'No action', '102': 'Needs Service', '103': 'No action', '104': 'Needs Service', '105': 'No action', '106': 'No action' });   // 106: MANUAL via ManufacturerID, 1 read, so no flag
   });
 
   it('shows install-warranty coverage on a property we installed, none elsewhere', async () => {
@@ -61,8 +61,8 @@ describe('audit review lines', () => {
   it('a completed service visit gives labor-only coverage; unable-to-access does not', async () => {
     const { db, pid } = await setup();
     const r = await importParsed(db, pid, parseAutoAudit(autoAuditGrid()), { createMissing: true });
-    const ep = (await db.query<{ id: string }>(`SELECT e.id FROM endpoint e JOIN unit u ON u.id=e.unit_id WHERE u.current_label='000102'`)).rows[0].id;
-    const ep2 = (await db.query<{ id: string }>(`SELECT e.id FROM endpoint e JOIN unit u ON u.id=e.unit_id WHERE u.current_label='000104'`)).rows[0].id;
+    const ep = (await db.query<{ id: string }>(`SELECT e.id FROM endpoint e JOIN unit u ON u.id=e.unit_id WHERE u.current_label='102'`)).rows[0].id;
+    const ep2 = (await db.query<{ id: string }>(`SELECT e.id FROM endpoint e JOIN unit u ON u.id=e.unit_id WHERE u.current_label='104'`)).rows[0].id;
     const mk = async (date: string, outcome: string, endpoint: string) => {
       const v = (await db.query<{ id: string }>(`INSERT INTO visit (property_id,visited_on,outcome) VALUES ($1,$2,$3) RETURNING id`, [pid, date, outcome])).rows[0].id;
       await db.query(`INSERT INTO service_event (visit_id,endpoint_id,action) VALUES ($1,$2,'inspect_test')`, [v, endpoint]);
@@ -71,8 +71,8 @@ describe('audit review lines', () => {
     await mk('2026-08-01', 'unable_to_access', ep2);
     const lines = await auditLines(db, r.batchId!, '2026-11-06');
     const by = Object.fromEntries(lines.map((l) => [l.unit.trim(), l.coverage]));
-    expect(by['000102']).toMatchObject({ laborCovered: true, partCovered: false });
-    expect(by['000104'].laborCovered).toBe(false);
+    expect(by['102']).toMatchObject({ laborCovered: true, partCovered: false });
+    expect(by['104'].laborCovered).toBe(false);
   });
 
   it('reads thresholds from settings', async () => {

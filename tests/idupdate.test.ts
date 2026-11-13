@@ -24,18 +24,18 @@ describe('Port and Net', () => {
     const g = manualAuditGrid(); g[2][12] = 3; g[2][13] = 7;           // unit 101: Mport 3, MNetAddr 7
     await importParsed(db, pid, parseManualAudit(g), { createMissing: true });
     const r = await db.query<{ unit: string; port: string; net: string }>(`SELECT u.current_label unit, e.port, e.net FROM endpoint e JOIN unit u ON u.id=e.unit_id ORDER BY 1`);
-    expect(r.rows.find((x) => x.unit.trim() === '000101')).toMatchObject({ port: '3', net: '7' });
-    expect(r.rows.find((x) => x.unit.trim() === '000102')).toMatchObject({ port: '0', net: '0' });
+    expect(r.rows.find((x) => x.unit.trim() === '101')).toMatchObject({ port: '3', net: '7' });
+    expect(r.rows.find((x) => x.unit.trim() === '102')).toMatchObject({ port: '0', net: '0' });
   });
 });
 
 describe('ID update record', () => {
   it('lists old and new transmitter IDs for replaced units only', async () => {
     const { db, pid, ep } = await setup();
-    const old = (await db.query<{ h: string }>(`SELECT d.hardware_id h FROM installation i JOIN device d ON d.id=i.device_id WHERE i.endpoint_id=$1 AND d.kind='transmitter'`, [ep('000102')])).rows[0].h;
+    const old = (await db.query<{ h: string }>(`SELECT d.hardware_id h FROM installation i JOIN device d ON d.id=i.device_id WHERE i.endpoint_id=$1 AND d.kind='transmitter'`, [ep('102')])).rows[0].h;
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'replace', issueCode: 'NT', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] },
-      { endpointId: ep('000104'), action: 'inspect_test', issueCode: 'HIGH' }] });
+      { endpointId: ep('102'), action: 'replace', issueCode: 'NT', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] },
+      { endpointId: ep('104'), action: 'inspect_test', issueCode: 'HIGH' }] });
     const rows = await buildIdUpdate(db, r.visitId);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ oldMdid: old, newMdid: 'NEWTX1', oldMiuid: '102-W', newMiuid: '102-W', oldPort: '0', newPort: '0', recoup: true, status: 'pending' });
@@ -44,7 +44,7 @@ describe('ID update record', () => {
   it('keeps overrides when rebuilt, rejects bad Port/Net, and drops a voided replacement', async () => {
     const { db, pid, ep } = await setup();
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
+      { endpointId: ep('102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
     const [row] = await buildIdUpdate(db, r.visitId);
     const edit = { id: row.id, newMiuid: '102-W', newPort: '2', newNet: '0', systemType: 'TW.COM', meterType: 'Test Poly' };
     await expect(saveIdOverrides(db, r.visitId, [{ ...edit, newPort: 'x' }])).rejects.toThrow(/whole number/);
@@ -57,7 +57,7 @@ describe('ID update record', () => {
   it('exports a workbook in the template layout with working formulas, and freezes exported rows', async () => {
     const { db, pid, ep } = await setup();
     const r = await recordVisit(db, { propertyId: pid, visitedOn: '2026-11-10', technician: 'T', outcome: 'completed', events: [
-      { endpointId: ep('000102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
+      { endpointId: ep('102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'NEWTX1' }] }] });
     await buildIdUpdate(db, r.visitId);
     const bytes = await idUpdateXlsx(db, r.visitId, { property: 'Test Property', classId: CLASS_ID, visitedOn: '2026-11-10', technician: 'T' });
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(bytes as never);

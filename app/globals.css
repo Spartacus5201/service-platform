@@ -68,3 +68,6 @@ ul.cols { columns: 3 14rem; padding-left: 1.1rem; } ul.cols li { break-inside: a
 .steps li a { display: block; font-weight: 600; margin-bottom: .25rem; }
 .stepno { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--brand); color: var(--brand-ink); font-size: .8rem; font-weight: 700; margin-right: .3rem; }
 .card.step { margin-bottom: 1rem; }
+.tabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: .5rem 0 1rem; }
+.tabs a { padding: .5rem .85rem; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--muted); text-decoration: none; margin-bottom: -1px; }
+.tabs a.on { color: var(--ink); background: var(--panel); border-color: var(--line); font-weight: 600; }

@@ -15,7 +15,7 @@ describe('invoicing', () => {
     await recordVisit(db, { propertyId: pid, visitedOn: '2026-08-02', outcome: 'unable_to_access', events: [{ endpointId: await ep('104'), action: 'other' }] });
     const open = await uninvoicedEvents(db, pid);
     expect(open).toHaveLength(1);                                         // the unable-to-access visit is not billable work
-    expect(open[0]).toMatchObject({ unit: '000102', action: 'replace', salesforceCase: '00099' });
+    expect(open[0]).toMatchObject({ unit: '102', action: 'replace', salesforceCase: '00099' });
     expect(open[0].parts[0]).toMatchObject({ kind: 'transmitter', catalogName: 'Transmitter', catalogPrice: 85 });
   });
 

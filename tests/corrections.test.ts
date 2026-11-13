@@ -22,7 +22,7 @@ async function setup() {
 describe('corrections', () => {
   it('requires a reason and records who changed what', async () => {
     const { db, ep, visit } = await setup();
-    const r = await visit([{ endpointId: ep('000102'), action: 'inspect_test', issueCode: 'NT', notes: 'typo' }]);
+    const r = await visit([{ endpointId: ep('102'), action: 'inspect_test', issueCode: 'NT', notes: 'typo' }]);
     await expect(correctEventWithReason(db, r.eventIds[0], { notes: 'fixed' }, '  ', null)).rejects.toThrow(/why/);
     await correctEventWithReason(db, r.eventIds[0], { notes: 'fixed', result: 'repaired' }, 'Typo', null);
     const c = await closeoutData(db, r.visitId);
@@ -34,7 +34,7 @@ describe('corrections', () => {
 
   it('keeps client wording through a correction and reopens approval', async () => {
     const { db, ep, visit } = await setup();
-    const r = await visit([{ endpointId: ep('000102'), action: 'inspect_test', issueCode: 'NT' }]);
+    const r = await visit([{ endpointId: ep('102'), action: 'inspect_test', issueCode: 'NT' }]);
     await db.query(`INSERT INTO event_note (service_event_id,client_comment) VALUES ($1,'Custom text')`, [r.eventIds[0]]);
     await approveCloseout(db, r.visitId, null);
     await correctEventWithReason(db, r.eventIds[0], { notes: 'x' }, 'why', null);
@@ -44,7 +44,7 @@ describe('corrections', () => {
 
   it('voiding a replacement puts the old transmitter back', async () => {
     const { db, ep, visit, active } = await setup();
-    const e = ep('000102');
+    const e = ep('102');
     const before = await active(e, 'transmitter');
     const r = await visit([{ endpointId: e, action: 'replace', issueCode: 'NT', replacements: [{ kind: 'transmitter', newHardwareId: 'WRONG' }] }]);
     expect(await active(e, 'transmitter')).toBe('WRONG');
@@ -58,18 +58,18 @@ describe('corrections', () => {
 
   it('fixes a mistyped replacement ID, refusing a duplicate', async () => {
     const { db, ep, visit, active } = await setup();
-    const a = await visit([{ endpointId: ep('000102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TX-AAA' }] }]);
-    await visit([{ endpointId: ep('000104'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TX-BBB' }] }]);
+    const a = await visit([{ endpointId: ep('102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TX-AAA' }] }]);
+    await visit([{ endpointId: ep('104'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TX-BBB' }] }]);
     await expect(correctPartId(db, a.eventIds[0], 'TX-BBB', 'typo', null)).rejects.toThrow(/already active/);
     await correctPartId(db, a.eventIds[0], 'TX-AAB', 'typo', null);
-    expect(await active(ep('000102'), 'transmitter')).toBe('TX-AAB');
+    expect(await active(ep('102'), 'transmitter')).toBe('TX-AAB');
     expect((await corrections(db, a.visitId))[0].summary).toContain('TX-AAA');
   });
 
   it('a new visit date recalculates warranty coverage and moves install dates', async () => {
     const { db, pid, ep, visit } = await setup();
     await db.query(`UPDATE property SET installed_by_us=true, install_completed_on='2026-01-01' WHERE id=$1`, [pid]);
-    const r = await visit([{ endpointId: ep('000102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TXD' }] }], '2026-11-10');
+    const r = await visit([{ endpointId: ep('102'), action: 'replace', replacements: [{ kind: 'transmitter', newHardwareId: 'TXD' }] }], '2026-11-10');
     const cov = async () => (await db.query<{ labor_covered: boolean }>(`SELECT labor_covered FROM service_event WHERE id=$1`, [r.eventIds[0]])).rows[0].labor_covered;
     expect(await cov()).toBe(true);                                     // inside the install warranty
     await correctVisit(db, r.visitId, { visitedOn: '2028-06-01' }, 'Wrong date', null);
@@ -80,7 +80,7 @@ describe('corrections', () => {
 
   it('blocks changes to invoiced work', async () => {
     const { db, ep, visit } = await setup();
-    const r = await visit([{ endpointId: ep('000102'), action: 'inspect_test', issueCode: 'NT' }]);
+    const r = await visit([{ endpointId: ep('102'), action: 'inspect_test', issueCode: 'NT' }]);
     await approveCloseout(db, r.visitId, null);
     await sendInvoiceSheet(db, r.visitId, null, '2026-11-11', null);
     await expect(voidEvent(db, r.eventIds[0], 'x', null)).rejects.toThrow(/invoiced/);
