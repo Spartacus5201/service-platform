@@ -67,7 +67,7 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
     `SELECT DISTINCT se.endpoint_id, v.visited_on::text, v.outcome
        FROM service_event se JOIN visit v ON v.id=se.visit_id
       WHERE se.endpoint_id IN (SELECT endpoint_id FROM audit_reading WHERE import_batch_id=$1)
-        AND NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id)`, [batchId]);
+        AND NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id)`, [batchId]);
   const byEndpoint = new Map<string, ServiceVisit[]>();
   visits.rows.forEach((v) => byEndpoint.set(v.endpoint_id, [...(byEndpoint.get(v.endpoint_id) ?? []), { date: v.visited_on, outcome: v.outcome }]));
 

@@ -3,6 +3,7 @@ import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { closeoutData, clientText } from '@/src/service/closeout';
+import { corrections } from '@/src/service/correct';
 import { RESULT_LABEL } from '@/src/service/phrases';
 import { addPhotoAction, approveCloseoutAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
 import { Badge, Flash, one, type SP } from '../../ui';
@@ -15,6 +16,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const approved = c.visit.status === 'approved';
   const invoiced = !!(await db.query(`SELECT 1 FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1 LIMIT 1`, [id])).rows.length;
   const canInvoice = can(s.role, 'edit_prices');
+  const log = await corrections(db, id);
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a> / Service notes {c.visit.visitedOn}</div>
@@ -61,6 +63,13 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         <div className="field"><label><input type="checkbox" name="include" /> Show to client</label></div>
         <div className="actions"><button type="submit" className="secondary">Add photo</button></div>
       </form>
+
+      <h2>Corrections</h2>
+      <p><a className="btn secondary" href={`/visits/${id}/correct`}>Correct this record</a></p>
+      {log.length > 0 && <div className="tablewrap"><table>
+        <thead><tr><th>When</th><th>Who</th><th>Change</th><th>Reason</th></tr></thead>
+        <tbody>{log.map((l, i) => <tr key={i}><td className="nowrap">{l.at}</td><td>{l.by ?? '—'}</td><td>{l.summary}</td><td>{l.reason ?? '—'}</td></tr>)}</tbody>
+      </table></div>}
 
       <h2>Finish</h2>
       <div className="actions" style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap' }}>

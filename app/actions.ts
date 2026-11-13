@@ -18,6 +18,8 @@ import { importInventory } from '@/src/catalog/import';
 import { getPropertyPrices, parseEquipment, saveSystemNotes, type SystemNotes } from '@/src/documents/systemnotes';
 import { addPhoto, approveCloseout, saveClientText, sendInvoiceSheet, CloseoutError } from '@/src/service/closeout';
 import type { Result } from '@/src/service/record';
+import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '@/src/service/correct';
+import { closeoutData } from '@/src/service/closeout';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 
@@ -382,4 +384,39 @@ export async function sendInvoiceSheetAction(fd: FormData) {
   const id = s(fd, 'visit_id')!;
   try { await sendInvoiceSheet(await getDb(), id, sess.userId, today(), s(fd, 'external_ref')); } catch (e) { if (domainError(e) || e instanceof InvoiceError) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${id}`, 'Recorded as sent to admin.'));
+}
+
+// ---------- corrections ----------
+export async function correctVisitAction(fd: FormData) {
+  const sess = await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!; const back = `/visits/${id}/correct`;
+  const reason = s(fd, 'reason');
+  const db = await getDb();
+  try {
+    if (!reason) throw new CloseoutError('Say why the change is needed.');
+    const c = await closeoutData(db, id);
+    const v = c.visit; const done: string[] = [];
+    const vp = { visitedOn: s(fd, 'visited_on') ?? v.visitedOn, technician: s(fd, 'technician'), outcome: (s(fd, 'outcome') ?? v.outcome) as Outcome,
+      salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes') };
+    if (vp.visitedOn !== v.visitedOn || vp.technician !== v.technician || vp.outcome !== v.outcome || vp.salesforceCase !== v.salesforceCase || vp.salesforceWorkOrder !== v.salesforceWorkOrder || vp.notes !== v.notes) {
+      await correctVisit(db, id, vp, reason, sess.userId); done.push('visit details');
+    }
+    const locked = new Set((await db.query<{ service_event_id: string }>(`SELECT il.service_event_id FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows.map((r) => r.service_event_id));
+    for (const u of (await closeoutData(db, id)).units) {
+      const e = u.eventId;
+      if (locked.has(e)) continue;                      // invoiced units are shown read-only
+      if (fd.get(`void_${e}`) === 'on') { await voidEvent(db, e, reason, sess.userId); done.push(`${u.building}-${u.unit} voided`); continue; }
+      if (u.action === 'replace') {
+        const tx = s(fd, `newtx_${e}`);
+        if (tx && tx !== u.newTxId) { await correctPartId(db, e, tx, reason, sess.userId); done.push(`${u.building}-${u.unit} new ID`); }
+        continue;
+      }
+      const patch = { action: (s(fd, `action_${e}`) ?? u.action) as Exclude<Action, 'replace'>, issueCode: s(fd, `issue_${e}`), result: (s(fd, `result_${e}`) as Result | null) ?? null,
+        readAtService: n(fd, `start_${e}`), endRead: n(fd, `end_${e}`), notes: s(fd, `notes_${e}`) };
+      const same = patch.action === u.action && patch.issueCode === u.issueCode && (patch.result ?? u.result) === u.result && patch.readAtService === u.startRead && patch.endRead === u.endRead && patch.notes === u.techNotes;
+      if (!same) { await correctEventWithReason(db, e, patch, reason, sess.userId); done.push(`${u.building}-${u.unit}`); }
+    }
+    if (!done.length) redirect(withError(back, 'Nothing was changed.'));
+    redirect(withMsg(`/visits/${id}`, `Corrected: ${done.join(', ')}. Client notes need approving again.`));
+  } catch (e) { if (isRedirect(e)) throw e; if (domainError(e)) redirect(withError(back, msgOf(e))); throw e; }
 }

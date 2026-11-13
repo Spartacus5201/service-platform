@@ -51,7 +51,7 @@ type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
 
 /** Service events that still stand (not replaced by a correction). */
-export const LIVE_EVENT = `NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id)`;
+export const LIVE_EVENT = `(NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id))`;
 
 export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResult> {
   if (!input.events.length) throw new ServiceError('A visit needs at least one event.');
@@ -151,10 +151,10 @@ async function applyReplacement(q: Q, v: VisitInput, e: EventInput, eventId: str
 export interface EventPatch { issueCode?: string | null; notes?: string | null; readAtService?: number | null; endRead?: number | null; result?: Result | null; action?: Exclude<Action, 'replace'> }
 
 /** Correct an event without losing the original. Refused once invoiced, and for replace events (their parts moved devices). */
-export async function correctEvent(db: Db, eventId: string, patch: EventPatch, userId?: string | null): Promise<string> {
+export async function correctEvent(db: Db, eventId: string, patch: EventPatch, userId?: string | null, reason?: string | null): Promise<string> {
   const ev = await one<{ id: string; visit_id: string; endpoint_id: string; action: Action; issue_code: string | null; read_at_service: string | null; notes: string | null; result: Result | null; end_read: string | null;
     labor_covered: boolean; part_covered: boolean; coverage_basis: string[]; live: boolean }>(db,
-    `SELECT se.*, ${LIVE_EVENT.replace('se.id', 'se.id')} AS live FROM service_event se WHERE se.id=$1`, [eventId]);
+    `SELECT se.*, ${LIVE_EVENT} AS live FROM service_event se WHERE se.id=$1`, [eventId]);
   if (!ev) throw new ServiceError('Unknown event.');
   if (!ev.live) throw new ServiceError('That event was already corrected; correct the latest version.');
   if (ev.action === 'replace') throw new ServiceError('A replace event cannot be edited in place; record a new visit.');
@@ -172,6 +172,6 @@ export async function correctEvent(db: Db, eventId: string, patch: EventPatch, u
   // The client wording follows the event it describes.
   await db.query(`INSERT INTO event_note (service_event_id,client_comment,extra_comment,updated_by) SELECT $2, client_comment, extra_comment, $3 FROM event_note WHERE service_event_id=$1`, [ev.id, next!.id, userId ?? null]);
   await db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'event_corrected','service_event',$2,$3)`,
-    [userId ?? null, next!.id, JSON.stringify({ supersedes: ev.id, patch })]);
+    [userId ?? null, next!.id, JSON.stringify({ supersedes: ev.id, visit_id: ev.visit_id, patch, reason: reason ?? null })]);
   return next!.id;
 }
