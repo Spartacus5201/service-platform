@@ -15,6 +15,8 @@ export default async function Admin({ searchParams }: { searchParams: SP }) {
       <p className="sub">Who can sign in, and the numbers the rules use.</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
 
+      <p className="small"><a href="/admin/activity">Activity log</a>: who changed what, and when.</p>
+
       <h2>Backup</h2>
       <p className="small"><a href="/admin/backup" download>Download a full backup</a>. To restore, stop the app and run <code>npx tsx scripts/restore.ts &lt;file&gt;</code>; the current data is kept alongside.</p>
 

@@ -82,6 +82,7 @@ export const SETTINGS: SettingSpec[] = [
   { key: 'quote_valid_days', label: 'Quote validity', help: 'Proposals and WAs show as expired after this many days; they can still be approved with a price reconfirmation.', unit: 'days', min: 1, max: 365 },
   { key: 'labor_rate', label: 'Default labor charge', help: 'Starting labor price per unit on new document lines and invoices. Every line can be changed by hand.', unit: 'dollars', min: 0, max: 10000, decimal: true },
   { key: 'post_audit_days', label: 'Post-service audit due', help: 'Days after a visit when the follow-up audit is expected. After that, visits with units still awaiting an audit appear on Today.', unit: 'days', min: 1, max: 90 },
+  { key: 'audit_interval_days', label: 'Audit every', help: 'Days between audits of a property. Until it is set the Properties list shows no due dates; once set it shows when each audit is due and marks late ones.', unit: 'days', min: 30, max: 1095 },
   { key: 'pm_battery_threshold', label: 'Low battery: flag level', help: 'A transmitter at or below this battery percent is flagged low (PM) on audits, the low battery report and Today.', unit: 'percent', min: 1, max: 99 },
   { key: 'pm_wa_threshold', label: 'Low battery: WA level', help: 'At or below this battery percent the battery goes on new WAs and Proposals: a PM battery line while it still reads, or a battery instead of a new transmitter when it has stopped.', unit: 'percent', min: 1, max: 99 },
   { key: 'pm_battery_price', label: 'Default battery price', help: 'Used when the catalog has no battery for the transmitter model. Labor uses the default labor charge.', unit: 'dollars', min: 0, max: 1000, decimal: true },
@@ -114,4 +115,31 @@ export async function rawFileStats(db: Db): Promise<{ kept: number; due: number;
     `SELECT count(*) FILTER (WHERE raw_file IS NOT NULL) kept, count(*) FILTER (WHERE raw_file IS NOT NULL AND purge_after <= current_date) due,
             COALESCE(sum(length(raw_file)),0) bytes FROM import_batch`)).rows[0];
   return { kept: Number(r.kept), due: Number(r.due), bytes: Number(r.bytes) };
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  login: 'Signed in', login_failed: 'Failed sign-in', password_changed: 'Changed password', setting_changed: 'Changed a setting',
+  audit_override: 'Changed an audit result', audit_override_cleared: 'Cleared an audit change', catalog_import: 'Imported catalog prices',
+  closeout_approved: 'Approved client notes', event_corrected: 'Corrected a service entry', invoice_ref_recorded: 'Recorded an invoice reference',
+  price_reconfirmed: 'Reconfirmed prices',
+};
+export interface ActivityRow { id: string; at: string; who: string | null; action: string; label: string; entity: string | null; entityId: string | null; detail: string }
+
+/** Newest first. `action` limits to one kind; `user` to one person; `before` pages back from an id. */
+export async function listActivity(db: Db, o: { action?: string; userId?: string; before?: string; limit?: number } = {}): Promise<{ rows: ActivityRow[]; actions: string[]; more: boolean }> {
+  const limit = Math.min(o.limit ?? 100, 500); const args: unknown[] = []; const where: string[] = [];
+  if (o.action) { args.push(o.action); where.push(`l.action=$${args.length}`); }
+  if (o.userId) { args.push(o.userId); where.push(`l.user_id=$${args.length}`); }
+  if (o.before && /^\d+$/.test(o.before)) { args.push(o.before); where.push(`l.id < $${args.length}`); }
+  const r = await db.query<{ id: string; at: string; who: string | null; action: string; entity: string | null; entity_id: string | null; detail: unknown }>(
+    `SELECT l.id::text id, l.at::text "at", u.name who, l.action, l.entity, l.entity_id, l.detail FROM audit_log l LEFT JOIN app_user u ON u.id=l.user_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.id DESC LIMIT ${limit + 1}`, args);
+  const actions = (await db.query<{ action: string }>(`SELECT DISTINCT action FROM audit_log ORDER BY action`)).rows.map((x) => x.action);
+  return {
+    rows: r.rows.slice(0, limit).map((x) => ({
+      id: x.id, at: x.at, who: x.who, action: x.action, label: ACTION_LABEL[x.action] ?? x.action.replace(/_/g, ' '), entity: x.entity, entityId: x.entity_id,
+      detail: x.detail && typeof x.detail === 'object' && Object.keys(x.detail as object).length ? Object.entries(x.detail as Record<string, unknown>).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ') : '',
+    })),
+    actions, more: r.rows.length > limit,
+  };
 }
