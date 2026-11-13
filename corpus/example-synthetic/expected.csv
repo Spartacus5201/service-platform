@@ -1,0 +1,13 @@
+building,unit,service,action,owner,component
+0001,000102,WS,Verify ID,,transmitter
+0001,000103,WS,Verify ID,,transmitter
+0001,000104,WS,Investigate,service coordinator,
+0001,000107,WS,Investigate,property,meter
+0001,000108,WS,Investigate,property,meter
+0002,000202,WS,Investigate,property,meter
+0002,000204,WS,Verify ID,,transmitter
+0002,000205,WS,Investigate,service coordinator,
+0002,000206,WS,Investigate,property,meter
+0003,000301,WS,Investigate,property,meter
+0003,000302,WS,Needs Service,,meter
+0003,000305,WS,Verify ID,,transmitter

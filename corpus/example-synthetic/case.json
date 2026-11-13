@@ -1,0 +1,13 @@
+{
+  "name": "example-synthetic",
+  "brand": "synthetic",
+  "classId": "9900001",
+  "asOf": "2026-11-06",
+  "installedByUs": false,
+  "files": [
+    {
+      "file": "raw/auto-audit.xlsx"
+    }
+  ],
+  "notes": "Invented data. Expected rows were written from the rules, so this only proves the harness; real cases must be signed off by a person."
+}

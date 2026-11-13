@@ -1,0 +1,38 @@
+{
+  "name": "service-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx scripts/seed.ts",
+    "check:real": "tsx scripts/check-real.ts",
+    "users": "tsx scripts/create-users.ts",
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "corpus": "tsx scripts/eval-corpus.ts",
+    "corpus:example": "tsx scripts/make-example-case.ts",
+    "sample:pdf": "tsx scripts/sample-pdf.ts",
+    "check-login": "tsx scripts/check-login.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.2",
+    "next": "^15.5.29",
+    "pdfkit": "^0.20.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pdfkit": "^0.17.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

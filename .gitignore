@@ -1,0 +1,12 @@
+node_modules
+.pgdata
+.env
+credentials*
+*.xlsx
+!tests/fixtures/*.xlsx
+.next
+next-env.d.ts
+sample-out
+corpus/real-*/
+!corpus/example-*/raw/*.xlsx
+tsconfig.tsbuildinfo
