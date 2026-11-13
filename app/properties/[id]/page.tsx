@@ -2,6 +2,8 @@ import { followUps } from '@/src/service/verify';
 import { stagedLines, latestAuditBatch, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { today } from '@/src/server/dates';
 import { listJobs } from '@/src/jobs/jobs';
+import { openIssues } from '@/src/import/issues';
+import { ImportIssues } from './issues';
 import { StageBadge } from '../../jobs/stage';
 import { createJobAction } from '../../actions';
 import { lowBatteryDevices } from '@/src/service/battery';
@@ -31,6 +33,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
     `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
   const fups = canDocs ? await followUps(db, id) : [];
   const latest = await latestAuditBatch(db, id);
+  const issues = await openIssues(db, id);
   const jobs = canDocs ? await listJobs(db, { propertyId: id }) : [];
   const lowCount = canDocs ? (await lowBatteryDevices(db, { propertyId: id })).length : 0;
   const stages = latest ? countStages(await stagedLines(db, latest.id, today())) : null;
@@ -86,6 +89,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <p><a href={`/jobs?property=${id}`}>All jobs for this property, including closed →</a></p>
       </>)}
 
+      <ImportIssues issues={issues} propertyId={id} back={`/properties/${id}`} />
       <h2>Imports</h2>
       <div className="tablewrap"><table>
         <thead><tr><th>When</th><th>Report</th><th>File</th><th>Summary</th><th>Raw file</th><th></th></tr></thead>

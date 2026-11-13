@@ -18,6 +18,9 @@ export function Today({ q }: { q: Queues }) {
       <Queue title="Units with no WA yet" hint="Flagged by the latest audit and not on any WA, Proposal or RFM." n={q.needsDocument.length}>
         {q.needsDocument.map((x) => <li key={x.batchId}><a href={`/properties/${x.propertyId}/audits/${x.batchId}`}>{x.property}</a>: {plural(x.count, 'unit')} (audit {x.auditedOn}) <Age d={x.days} /></li>)}
       </Queue>
+      <Queue title="Import problems to resolve" hint="Units not on file and transmitter IDs that differ from our record." n={q.importIssues.length}>
+        {q.importIssues.map((x) => <li key={x.propertyId}><a href={`/properties/${x.propertyId}#import-problems`}>{x.property}</a>: {plural(x.count, 'problem')} <Age d={x.days} /></li>)}
+      </Queue>
       <Queue title="Revisit needed" hint="The technician could not get access or could not finish." n={q.revisit.length}>
         {q.revisit.map((x, i) => <li key={i}><a href={`/visits/${x.visitId}`}>{x.property}</a>: {x.unit} {x.service} ({x.result.replaceAll('_', ' ')}) <Age d={x.days} /></li>)}
       </Queue>

@@ -45,7 +45,7 @@ type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []): Promise<T | undefined> =>
   (await q.query<T>(sql, p)).rows[0];
 
-class Registry {
+export class Registry {
   private aliases = new Map<string, string>();      // "b|u" -> unit_id
   private buildings = new Map<string, string>();    // normalized label -> building_id
   private endpoints = new Map<string, string>();    // "unit|service" -> endpoint_id
@@ -172,6 +172,9 @@ export async function importParsed(db: Db, propertyId: string, parsed: Parsed, o
 
     res.unitsCreated = reg.unitsCreated;
     if (kind !== 'psr' && kind !== 'occupancy' && kind !== 'unit_directory') await confirmIdUpdates(tx, propertyId);
+    const { recordIssues, autoResolve } = await import('./issues');
+    await recordIssues(tx, propertyId, res.batchId!, res);
+    await autoResolve(tx, propertyId);
     res.warnings.push(...(('warnings' in parsed ? parsed.warnings : []) as string[]));
     await tx.query(`UPDATE import_batch SET summary=$2 WHERE id=$1`, [res.batchId, JSON.stringify({
       readings: res.readings, devices: res.devices, checkins: res.checkins, unitsCreated: res.unitsCreated,

@@ -47,10 +47,10 @@ export default function ImportForm({ propertyId, firstImport }: { propertyId: st
           )}
           {r.auditUrl && <p><a className="btn" href={r.auditUrl}>Open the audit review →</a></p>}
           {!!r.unmatched?.length && (
-            <div className="flash error"><b>{r.unmatched.length} unit(s) are not in the registry</b> and were skipped: {r.unmatched.slice(0, 12).map((u) => `${u.building}-${u.unit} ${u.service}`).join(', ')}{r.unmatched.length > 12 ? '…' : ''}. Tick “Add units” and import again if they are new.</div>
+            <div className="flash error"><b>{r.unmatched.length} unit(s) are not in the registry</b> and were skipped: {r.unmatched.slice(0, 12).map((u) => `${u.building}-${u.unit} ${u.service}`).join(', ')}{r.unmatched.length > 12 ? '…' : ''}. Tick “Add units” and import again if they are new, or deal with them under Import problems.</div>
           )}
           {!!r.idChanges?.length && (
-            <div className="flash"><b>{r.idChanges.length} transmitter ID(s) differ from the record</b> and were not changed. Record the swap as a service visit to update them: {r.idChanges.slice(0, 8).map((c) => `${c.building}-${c.unit} (${c.was} → ${c.now})`).join(', ')}{r.idChanges.length > 8 ? '…' : ''}</div>
+            <div className="flash"><b>{r.idChanges.length} transmitter ID(s) differ from the record</b> and were not changed. Record the swap as a service visit to update them (kept under Import problems until then): {r.idChanges.slice(0, 8).map((c) => `${c.building}-${c.unit} (${c.was} → ${c.now})`).join(', ')}{r.idChanges.length > 8 ? '…' : ''}</div>
           )}
           {!!r.warnings?.length && <details><summary className="small">{r.warnings.length} note(s)</summary><ul>{r.warnings.map((w, i) => <li key={i} className="small">{w}</li>)}</ul></details>}
         </div>

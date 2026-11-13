@@ -23,6 +23,7 @@ export interface Queues {
   staleDrafts: (Item & { documentId: string; number: string; type: string })[];
   failed: (Item & { visitId: string; unit: string; service: string; evidence: string })[];
   lowBattery: (Item & { count: number; oldest: string })[];
+  importIssues: (Item & { count: number })[];
   readyToClose: (Item & { jobId: string; number: number; title: string })[];
   postAudit: (Item & { visitId: string; visitedOn: string; dueOn: string; waiting: number })[];
 }
@@ -30,7 +31,7 @@ export interface Queues {
 const days = (from: string, to: string) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
 
 export async function todayQueues(db: Db, today: string): Promise<Queues> {
-  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [], postAudit: [], lowBattery: [], readyToClose: [] };
+  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [], postAudit: [], lowBattery: [], readyToClose: [], importIssues: [] };
   const props = (await db.query<{ id: string; name: string }>(`SELECT id, name FROM property ORDER BY name`)).rows;
   for (const p of props) {
     const b = await latestAuditBatch(db, p.id);
@@ -87,6 +88,12 @@ export async function todayQueues(db: Db, today: string): Promise<Queues> {
     .map((r) => ({ propertyId: r.pid, property: r.name, documentId: r.id, number: r.number, type: r.type, days: days(r.on, today) }))
     .filter((x) => x.days >= LIMITS.staleDraft);
   q.postAudit = (await postAuditsDue(db, today)).map((x) => ({ ...x, days: days(x.dueOn, today) }));
+  const { openIssues } = await import('../import/issues');
+  const iss = await openIssues(db);
+  for (const p of props) {
+    const mine = iss.filter((i) => i.propertyId === p.id);
+    if (mine.length) q.importIssues.push({ propertyId: p.id, property: p.name, count: mine.length, days: days(mine.map((i) => i.createdOn).sort()[0], today) });
+  }
   const { listJobs } = await import('../jobs/jobs');
   q.readyToClose = (await listJobs(db)).filter((j) => j.stage === 'ready').map((j) => ({ propertyId: j.propertyId, property: j.property, jobId: j.id, number: j.number, title: j.title, days: days(j.since, today) }));
   return q;

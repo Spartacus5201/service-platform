@@ -21,6 +21,7 @@ import type { Result } from '@/src/service/record';
 import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '@/src/service/correct';
 import { closeoutData } from '@/src/service/closeout';
 import { buildIdUpdate, markExported, saveIdOverrides } from '@/src/service/idupdate';
+import { addUnitForIssue, dismissIssue, IssueError } from '@/src/import/issues';
 import { createJob, updateJob, closeJob, reopenJob, attachAudit, JobError, type JobSource } from '@/src/jobs/jobs';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
@@ -433,6 +434,18 @@ export async function attachAuditAction(fd: FormData) {
   try { await attachAudit(await getDb(), id, batch); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Audit attached.'));
+}
+
+// ---------- import problems ----------
+export async function resolveIssueAction(fd: FormData) {
+  const sess = await requireCan('import_reports');
+  const id = s(fd, 'issue_id')!; const back = s(fd, 'back') ?? '/';
+  const db = await getDb();
+  try {
+    if (fd.get('do') === 'add') await addUnitForIssue(db, id, sess.userId);
+    else await dismissIssue(db, id, s(fd, 'reason'), sess.userId);
+  } catch (e) { if (e instanceof IssueError) redirect(withError(back, e.message)); throw e; }
+  redirect(withMsg(back, fd.get('do') === 'add' ? 'Unit added.' : 'Dismissed.'));
 }
 
 // ---------- corrections ----------

@@ -114,6 +114,8 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
       }
     }
   });
+  // A recorded swap may settle an ID mismatch an import reported.
+  await (await import('../import/issues')).autoResolve(db, input.propertyId);
   return { visitId, eventIds, warnings };
 }
 
