@@ -1,3 +1,4 @@
+import { followUps } from '@/src/service/verify';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireSession } from '@/src/server/session';
@@ -22,6 +23,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const priceRows = [...Object.entries(propPrices), ['', ''], ['', '']].slice(0, Math.max(3, Object.keys(propPrices).length + 1));
   const visits = canDocs ? (await db.query<{ id: string; visited_on: string; technician: string | null; notes_status: string; units: string }>(
     `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
+  const fups = canDocs ? await followUps(db, id) : [];
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
   const showPrices = can(s.role, 'view_prices');
   void showPrices;
@@ -57,6 +59,14 @@ export default async function PropertyPage({ params, searchParams }: { params: P
           {!imports.length && <tr><td colSpan={6} className="small">Nothing imported yet.</td></tr>}
         </tbody>
       </table></div>
+
+      {fups.length > 0 && <>
+        <h2>Needs follow-up</h2>
+        <div className="tablewrap"><table>
+          <thead><tr><th>Unit</th><th>Last service</th><th>Why</th></tr></thead>
+          <tbody>{fups.map((f) => <tr key={f.eventId}><td className="nowrap"><a href={`/endpoints/${f.endpointId}`}>{f.building}-{f.unit} {f.service}</a></td><td className="nowrap"><a href={`/visits/${f.visitId}`}>{f.visitedOn}</a></td><td className="small">{f.evidence}</td></tr>)}</tbody>
+        </table></div>
+      </>}
 
       {canDocs && <>
         <h2>Service notes</h2>

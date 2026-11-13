@@ -4,6 +4,7 @@ import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
+import { verifyVisit } from '@/src/service/verify';
 import { RESULT_LABEL } from '@/src/service/phrases';
 import { addPhotoAction, approveCloseoutAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
 import { Badge, Flash, one, type SP } from '../../ui';
@@ -17,6 +18,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const invoiced = !!(await db.query(`SELECT 1 FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1 LIMIT 1`, [id])).rows.length;
   const canInvoice = can(s.role, 'edit_prices');
   const log = await corrections(db, id);
+  const checks = await verifyVisit(db, id);
   return (
     <>
       <div className="crumbs"><a href="/">Properties</a> / <a href={`/properties/${c.property.id}`}>{c.property.name}</a> / Service notes {c.visit.visitedOn}</div>
@@ -47,6 +49,16 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         <div className="actions"><button type="submit" className="secondary">Save wording</button></div>
       </form>
 
+      <h2>Did it work?</h2>
+      <div className="tablewrap"><table>
+        <thead><tr><th>Unit</th><th>Issue</th><th>Status</th><th>Evidence</th></tr></thead>
+        <tbody>{checks.map((k) => (
+          <tr key={k.eventId}><td className="nowrap">{k.building}-{k.unit}</td><td>{k.issueCode ?? '—'}</td>
+            <td><Badge tone={k.status === 'verified' ? 'ok' : k.status === 'failed' ? 'bad' : 'warn'}>{k.status}</Badge></td><td className="small">{k.evidence}</td></tr>
+        ))}{!checks.length && <tr><td colSpan={4} className="small">No units.</td></tr>}</tbody>
+      </table></div>
+      <p className="small">Checked against audits and check-ins imported since the visit. Re-checked automatically with every new import.</p>
+
       <h2>Photos</h2>
       <div className="tablewrap"><table><tbody>
         {c.photos.map((p) => (
@@ -74,6 +86,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
       <h2>Finish</h2>
       <div className="actions" style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap' }}>
         <a className="btn secondary" href={`/visits/${id}/export?kind=notes`} target="_blank">Client notes PDF{approved ? '' : ' (draft)'}</a>
+        <a className="btn secondary" href={`/visits/${id}/ids`}>ID update record</a>
         {canInvoice && <a className="btn secondary" href={`/visits/${id}/export?kind=invoice`} target="_blank">Invoicing sheet PDF (internal)</a>}
         {!approved && <form action={approveCloseoutAction}><input type="hidden" name="visit_id" value={id} /><button type="submit">Approve client notes</button></form>}
       </div>

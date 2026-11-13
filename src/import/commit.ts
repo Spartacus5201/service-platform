@@ -1,4 +1,5 @@
 // Writes a parsed report into the database. One transaction per import; re-importing the same file is a no-op.
+import { confirmIdUpdates } from '../service/verify';
 import { createHash } from 'node:crypto';
 import type { Db } from '../db';
 import { normLabel } from '../parsers/common';
@@ -170,6 +171,7 @@ export async function importParsed(db: Db, propertyId: string, parsed: Parsed, o
     else await importPsr(tx, propertyId, res, reg, parsed, opts);
 
     res.unitsCreated = reg.unitsCreated;
+    if (kind !== 'psr' && kind !== 'occupancy' && kind !== 'unit_directory') await confirmIdUpdates(tx, propertyId);
     res.warnings.push(...(('warnings' in parsed ? parsed.warnings : []) as string[]));
     await tx.query(`UPDATE import_batch SET summary=$2 WHERE id=$1`, [res.batchId, JSON.stringify({
       readings: res.readings, devices: res.devices, checkins: res.checkins, unitsCreated: res.unitsCreated,
@@ -197,6 +199,7 @@ async function importAudit(q: Q, propertyId: string, res: ImportResult, reg: Reg
     });
     if (!eid) { res.unmatched.push({ building: r.building.trim(), unit: r.unit.trim(), service: r.serviceCode }); continue; }
 
+    if (r.port !== null || r.net !== null) await q.query(`UPDATE endpoint SET port=COALESCE($2,port), net=COALESCE($3,net) WHERE id=$1`, [eid, r.port, r.net]);
     if (r.address) {
       await q.query(`UPDATE unit SET service_address=$2 WHERE id=(SELECT unit_id FROM endpoint WHERE id=$1)`, [eid, r.address]);
     }

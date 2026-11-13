@@ -20,6 +20,7 @@ import { addPhoto, approveCloseout, saveClientText, sendInvoiceSheet, CloseoutEr
 import type { Result } from '@/src/service/record';
 import { correctEventWithReason, correctPartId, correctVisit, voidEvent } from '@/src/service/correct';
 import { closeoutData } from '@/src/service/closeout';
+import { markExported, saveIdOverrides } from '@/src/service/idupdate';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 
@@ -419,4 +420,20 @@ export async function correctVisitAction(fd: FormData) {
     if (!done.length) redirect(withError(back, 'Nothing was changed.'));
     redirect(withMsg(`/visits/${id}`, `Corrected: ${done.join(', ')}. Client notes need approving again.`));
   } catch (e) { if (isRedirect(e)) throw e; if (domainError(e)) redirect(withError(back, msgOf(e))); throw e; }
+}
+
+// ---------- ID update ----------
+export async function saveIdUpdateAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!;
+  const edits = fd.getAll('row').map(String).map((r) => ({ id: r, newMiuid: s(fd, `miuid_${r}`), newPort: s(fd, `port_${r}`) ?? '0', newNet: s(fd, `net_${r}`) ?? '0', systemType: s(fd, `system_${r}`), meterType: s(fd, `meter_${r}`) }));
+  try { await saveIdOverrides(await getDb(), id, edits); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}/ids`, msgOf(e))); throw e; }
+  redirect(withMsg(`/visits/${id}/ids`, 'Saved.'));
+}
+
+export async function markIdUpdateSentAction(fd: FormData) {
+  await requireCan('edit_documents');
+  const id = s(fd, 'visit_id')!;
+  const n = await markExported(await getDb(), id);
+  redirect(withMsg(`/visits/${id}/ids`, n ? `${n} unit${n === 1 ? '' : 's'} marked as sent to billing.` : 'Nothing to mark.'));
 }

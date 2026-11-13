@@ -18,6 +18,8 @@ export interface AuditRow {
   manufacturerId: string | null;
   isManual: boolean;
   readCount: number | null;         // Manual Audit only
+  port: string | null;              // Mport, Manual Audit only
+  net: string | null;               // MNetAddr, Manual Audit only
   lastRealOn: string | null;        // MaxRealDate, Manual Audit only
   readDate1: string | null; read1: number | null;
   readDate2: string | null; read2: number | null;
@@ -48,6 +50,8 @@ export function parseAddress(serviceAddr: string | null): string | null {
   const a = serviceAddr.trim().replace(/^\d+:/, '').replace(RANGE, '').replace(/\s+/g, ' ').trim();
   return a || null;
 }
+
+const portText = (c: Cell): string | null => { const n = num(c); return n === null ? null : String(Math.trunc(n)); };
 
 function at(r: Cell[], i: number | undefined): Cell { return i === undefined ? null : (r[i] ?? null); }
 
@@ -84,7 +88,7 @@ export function parseAutoAudit(rows: Grid): AuditParse {
       serviceCode: str(at(r, h.get('serviceid'))) ?? '',
       amrId: str(at(r, h.get('amr#1'))) ?? str(at(r, h.get('ubsamr#'))),
       vendorLabel: str(at(r, h.get('tranid1'))) ?? str(at(r, h.get('ubstranid'))),
-      meterTypeId: null, manufacturerId: null, isManual: false, readCount: null, lastRealOn: null,
+      meterTypeId: null, manufacturerId: null, isManual: false, readCount: null, lastRealOn: null, port: null, net: null,
       readDate1: parseDate(at(r, d1)), read1: num(at(r, h.get('read1'))),
       readDate2: parseDate(at(r, h.get('readdate2'))), read2: num(at(r, h.get('read2'))),
       usage: num(at(r, h.get('usage'))),
@@ -120,6 +124,7 @@ export function parseManualAudit(rows: Grid): AuditParse {
       amrId: str(at(r, h.get('mdid'))),
       vendorLabel: str(at(r, h.get('miuid'))),
       meterTypeId: mt, manufacturerId: mf, isManual: isManualMeter(mt, mf),
+      port: portText(at(r, h.get('mport'))), net: portText(at(r, h.get('mnetaddr'))),
       readCount: num(at(r, h.get('readcount'))), lastRealOn: parseDate(at(r, h.get('maxrealdate'))),
       readDate1: parseDate(at(r, h.get('column1'))), read1: num(at(r, h.get('read1'))),
       readDate2: parseDate(at(r, h.get('column3'))), read2: num(at(r, h.get('read2'))),

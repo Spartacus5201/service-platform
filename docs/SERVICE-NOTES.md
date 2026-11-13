@@ -1,6 +1,6 @@
 # Service Notes close-out: design
 
-Status: part A built (steps 1, 4, 5). Part B (ID update workbook, verification) planned. Based on the three Minol templates: Service Notes (client), Service Invoicing (internal), ID Update (billing system).
+Status: built (all five steps). Based on the three Minol templates: Service Notes (client), Service Invoicing (internal), ID Update (billing system).
 
 ## Decisions made
 - **No AI in the workflow.** Processing notes and photos is rules-based and manual: phrase templates keyed to issue and outcome, edited by a coordinator. Claude is used only to build the system.
