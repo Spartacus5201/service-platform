@@ -17,9 +17,9 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
     `SELECT i.kind, i.filename, i.imported_at::text, p.name FROM import_batch i JOIN property p ON p.id=i.property_id WHERE i.id=$1 AND i.property_id=$2`, [batchId, id])).rows[0];
   if (!b) notFound();
   const all = await auditLines(db, batchId, today());
-  const showAll = one(sp.show) === 'all';
+  const showAll = one(sp.show) === 'all'; const showPm = one(sp.show) === 'pm';
   const actionable = all.filter((l) => l.recommendation.action !== 'No action');
-  const lines = showAll ? all : actionable;
+  const lines = showAll ? all : showPm ? all.filter((l) => l.lowBattery) : actionable;
   const count = (a: string) => all.filter((l) => l.recommendation.action === a).length;
   const canDocs = can(s.role, 'edit_documents');
   const base = `/properties/${id}/audits/${batchId}`;
@@ -40,12 +40,14 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
         <div className="stat"><b>{count('Investigate')}</b><span>Investigate</span></div>
         <div className="stat"><b>{count('Requested by property')}</b><span>Requested</span></div>
         <div className="stat"><b>{count('Unrecognized')}</b><span>Unrecognized</span></div>
+        <div className="stat"><b>{all.filter((l) => l.lowBattery).length}</b><span>Low battery (PM)</span></div>
       </div>
       {!!staged.length && <p className="small">Where the flagged units stand: {(Object.keys(sc) as UnitStage[]).filter((k) => sc[k]).map((k) => `${STAGE_LABEL[k]} ${sc[k]}`).join(' · ')}</p>}
       {all.some((l) => l.occupied === null) && <div className="flash">Occupancy is unknown for some units, so they are treated as occupied. Import an occupancy report to refine this.</div>}
       <div className="filters">
-        <a className={showAll ? '' : 'on'} href={base}>Needs action ({actionable.length})</a>
+        <a className={showAll || showPm ? '' : 'on'} href={base}>Needs action ({actionable.length})</a>
         <a className={showAll ? 'on' : ''} href={`${base}?show=all`}>All ({all.length})</a>
+        {all.some((l) => l.lowBattery) && <a className={showPm ? 'on' : ''} href={`${base}?show=pm`}>Low battery ({all.filter((l) => l.lowBattery).length})</a>}
         {canDocs && <span style={{ marginLeft: 'auto', display: 'flex', gap: '.5rem' }}>
           <a href={`${base}/export?format=csv`} download>CSV</a><a href={`${base}/export?format=xlsx`} download>Excel</a><a href={`${base}/export?format=pdf`} download>PDF</a>
           <a href={`${base}/export?format=case`} download title="Raw files plus this audit as a test case for the evaluation harness">Save as test case</a>
@@ -57,7 +59,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
         <tbody>
           {lines.map((l) => (
             <tr key={l.readingId} className={l.recommendation.action === 'No action' ? 'muted' : ''}>
-              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}</td>
+              <td className="nowrap"><a href={`/endpoints/${l.endpointId}`}>{l.building}-{l.unit}</a></td><td>{l.service}{l.isManual ? ' (manual)' : ''}</td><td>{l.code || '—'}{l.lowBattery && <> <Badge tone="warn">PM · low battery since {l.lowBattery.since}</Badge></>}</td>
               <td><Badge tone={actionTone(l.recommendation.action)}>{l.recommendation.action}</Badge>{l.override && <> <Badge tone="info">edited</Badge></>}{l.recommendation.owner ? <span className="small"> · {l.recommendation.owner}</span> : null}{l.recommendation.component ? <span className="small"> · {l.recommendation.component}</span> : null}</td>
               <td className="small">{l.recommendation.reason}</td>
               <td className="small">{l.recommendation.action === 'No action' ? '' : (

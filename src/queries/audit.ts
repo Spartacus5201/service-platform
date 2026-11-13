@@ -38,6 +38,8 @@ export interface AuditLine {
   rules: Recommendation;
   override: { reason: string; by: string | null; at: string } | null;
   coverage: Coverage;
+  /** The transmitter's latest check-in reports low battery: preventative maintenance. */
+  lowBattery: { since: string; hardwareId: string | null } | null;
 }
 
 /** Every reading in an import batch with its recommendation and warranty position, ready for the audit review screen. */
@@ -76,6 +78,10 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
       WHERE origin='service' AND endpoint_id IN (SELECT endpoint_id FROM audit_reading WHERE import_batch_id=$1) GROUP BY endpoint_id`, [batchId]);
   const partOn = new Map(partInstalls.rows.map((x) => [x.endpoint_id, x.installed_on]));
 
+  const { lowBatteryDevices } = await import('../service/battery');
+  const low = new Map((await lowBatteryDevices(db, { endpointIds: [...new Set(rows.rows.map((r) => r.endpoint_id))] }))
+    .filter((d) => d.endpointId).map((d) => [d.endpointId!, { since: d.firstLowOn, hardwareId: d.hardwareId }]));
+
   return rows.rows.map((r) => {
     // Occupancy is unknown until an occupancy (or audit with ranges) import has run for the unit.
     const occupied = r.occupancy_as_of === null ? null : r.move_in_on !== null;
@@ -94,6 +100,7 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
       usage: r.usage === null ? null : Number(r.usage), readCount: r.read_count, occupied, isManual: r.is_manual_read,
       address: r.address, moveInOn: r.move_in_on, readDate1: r.read_date_1, readDate2: r.read_date_2, transmitterId: r.amr_id, miuid: r.vendor_label,
       recommendation: rec, rules, override: o ? { reason: o.reason, by: o.by, at: o.at } : null, coverage: cov,
+      lowBattery: low.get(r.endpoint_id) ?? null,
     };
   });
 }

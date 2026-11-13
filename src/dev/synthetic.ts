@@ -35,7 +35,7 @@ export function synthUnits(buildings = 3, perBuilding = 8, seed = 42): SynthUnit
 
 const pad = (v: string | number, n: number) => String(v).padStart(n, '0');
 
-export interface SynthOpts { classId?: string; name?: string; d1?: string; d2?: string; override?: Record<string, { code?: string; tx?: string }> }
+export interface SynthOpts { classId?: string; name?: string; d1?: string; d2?: string; override?: Record<string, { code?: string; tx?: string }>; lowBattery?: string[] }
 
 export function synthAutoAudit(units: SynthUnit[], o: SynthOpts = {}): Grid {
   const rows: Grid = [['PASTE ZONE'], ['Classid', 'Bldg#', 'Unit#', 'ServiceID', 'UBSTranID', 'UBSAMR#', 'TranID2', 'AMR#2', 'Readdate2', 'Read2', 'Error2', 'TranId1', 'AMR#1', 'Column1', 'Read1', 'Error1', 'Usage', 'OccDays', 'AuditResult', 'ServiceAddr']];
@@ -53,9 +53,9 @@ export function synthCim(units: SynthUnit[], o: SynthOpts = {}): Grid {
     ['Project ID:', o.classId ?? SYNTH_CLASS_ID, null, null, null, '# Reporting In:', units.length, null, 'Date:', '11/6/26'],
     ['Check-in %:', 100, null, null, null, '# Non-Advancing:', 0], [],
     ['Repeaters:', 'Last_Check_In:'], ['SYNREP01', new Date('2026-11-05T12:00:00Z')], ['SYNREP02', new Date('2026-11-05T12:05:00Z')], [],
-    ['Building', 'Unit', 'MeterId', 'Serial_Number', 'Utility_Type', 'Meter_Type', 'Device_Type', 'Last_Check_In', 'IMR', 'Pulse_Count', 'Meter_Usage'],
+    ['Building', 'Unit', 'MeterId', 'Serial_Number', 'Utility_Type', 'Meter_Type', 'Device_Type', 'Last_Check_In', 'IMR', 'Pulse_Count', 'Meter_Usage', ...(o.lowBattery ? ['Battery'] : [])],
   ];
-  for (const u of units) rows.push([u.bldg, u.unit, u.unit, u.tx, 'Water', 'Synthetic Poly', 'Transceiver', '2026-11-05T01:00:00', null, 100, 10]);
+  for (const u of units) rows.push([u.bldg, u.unit, u.unit, u.tx, 'Water', 'Synthetic Poly', 'Transceiver', '2026-11-05T01:00:00', null, 100, 10, ...(o.lowBattery ? [o.lowBattery.includes(u.unit) ? 'Low' : 'OK'] : [])]);
   return rows;
 }
 

@@ -5,6 +5,7 @@ import { followUps } from '../service/verify';
 import { LIVE_EVENT } from '../service/record';
 import { stagedLines, latestAuditBatch, countStages } from '../service/unitstatus';
 import { postAuditsDue } from '../service/aar';
+import { lowBatteryDevices } from '../service/battery';
 
 /** Days an item may wait before it is shown as overdue. */
 export const LIMITS = { idConfirm: 14, staleDraft: 30, notesApproval: 3, invoiceRef: 14, docVisit: 30 };
@@ -21,13 +22,14 @@ export interface Queues {
   invoiceNoRef: (Item & { visitId: string | null; submittedOn: string })[];
   staleDrafts: (Item & { documentId: string; number: string; type: string })[];
   failed: (Item & { visitId: string; unit: string; service: string; evidence: string })[];
+  lowBattery: (Item & { count: number; oldest: string })[];
   postAudit: (Item & { visitId: string; visitedOn: string; dueOn: string; waiting: number })[];
 }
 
 const days = (from: string, to: string) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
 
 export async function todayQueues(db: Db, today: string): Promise<Queues> {
-  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [], postAudit: [] };
+  const q: Queues = { needsDocument: [], revisit: [], notVisited: [], draftNotes: [], uninvoiced: [], idUpdates: [], idUnconfirmed: [], invoiceNoRef: [], staleDrafts: [], failed: [], postAudit: [], lowBattery: [] };
   const props = (await db.query<{ id: string; name: string }>(`SELECT id, name FROM property ORDER BY name`)).rows;
   for (const p of props) {
     const b = await latestAuditBatch(db, p.id);
@@ -44,6 +46,8 @@ export async function todayQueues(db: Db, today: string): Promise<Queues> {
       }
       for (const [documentId, d] of byDoc) q.notVisited.push({ propertyId: p.id, property: p.name, documentId, number: d.number, units: d.units, days: days(d.createdOn, today) });
     }
+    const low = await lowBatteryDevices(db, { propertyId: p.id });
+    if (low.length) { const oldest = low.map((d) => d.firstLowOn).filter(Boolean).sort()[0] ?? today; q.lowBattery.push({ propertyId: p.id, property: p.name, count: low.length, oldest, days: days(oldest, today) }); }
     for (const f of await followUps(db, p.id)) q.failed.push({ propertyId: p.id, property: p.name, visitId: f.visitId, unit: `${f.building} ${f.unit}`, service: f.service, evidence: f.evidence, days: days(f.on ?? f.visitedOn, today) });
   }
 

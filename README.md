@@ -148,3 +148,8 @@ Service notes page → **Correct this record**. Change visit details (date, tech
 
 ## Demo
 `npm run demo` builds a synthetic dataset in `.pgdata-demo`; `npm run demo:start` serves it. See docs/DEMO.md.
+
+## Work tracking, After Action Report, low battery
+- Every flagged unit has a stage derived from the records (needs a WA, on a document, serviced, revisit, still failing); see the audit page Status column and the Today queues.
+- Link a service visit to its WA on the service report form. The visit page shows the post-service audit; `/aar?visit=` or `/aar?document=` gives the After Action Report PDF. Setting `post_audit_days` (default 7).
+- Low battery check-ins flag transmitters PM (preventative maintenance): badge on the audit, its own line on new WAs/Proposals, report at Property > Low battery report (Excel). Settings `pm_code`, `pm_warranty`.

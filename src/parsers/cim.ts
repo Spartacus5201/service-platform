@@ -77,7 +77,8 @@ export function parseCimNextCentury(rows: Grid): CimParse {
       imr: num(at(r, h.get('imr'))),
       pulseCount: num(at(r, h.get('pulse_count'))),
       meterUsage: num(at(r, h.get('meter_usage'))),
-      lowBattery: null, tamper: null, jammed: null, powerLoss: null, reset: null, signalLevel: null, signalMargin: null,
+      lowBattery: batteryLow(at(r, h.get('low_battery') ?? h.get('low battery') ?? h.get('battery') ?? h.get('battery_status') ?? h.get('battery status'))),
+      tamper: null, jammed: null, powerLoss: null, reset: null, signalLevel: null, signalMargin: null,
     });
   }
   const propertyRaw = str(kv.get('property') ?? null);
@@ -91,6 +92,14 @@ export function parseCimNextCentury(rows: Grid): CimParse {
     nonAdvancing: num(kv.get('non advancing') ?? null),
     repeaters, devices, warnings,
   };
+}
+
+/** A battery column may hold yes/no or a status word ("Low", "OK", "Good"). Missing or unreadable stays unknown. */
+export function batteryLow(v: Parameters<typeof bool>[0]): boolean | null {
+  const s = str(v)?.toLowerCase();
+  if (s && /\blow\b|replace|critical/.test(s)) return true;
+  if (s && /^(ok|good|normal|full|high)$/.test(s)) return false;
+  return bool(v);
 }
 
 /** CIM from Inovonics: a flat Device Status table. No ClassID: the selected property supplies it. */

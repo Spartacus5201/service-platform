@@ -30,6 +30,9 @@ export function Today({ q }: { q: Queues }) {
       <Queue title="Issued documents with units not yet serviced" hint="No visit recorded for these units since the document." n={q.notVisited.length}>
         {q.notVisited.map((x) => <li key={x.documentId}><a href={`/documents/${x.documentId}`}>{x.property} {x.number}</a>: {plural(x.units, 'unit')} <Age d={x.days} limit={LIMITS.docVisit} /></li>)}
       </Queue>
+      <Queue title="Low battery transmitters (preventative maintenance)" hint="Still reading, but the battery is reported low. Quote them before they stop transmitting." n={q.lowBattery.length}>
+        {q.lowBattery.map((x) => <li key={x.propertyId}><a href={`/properties/${x.propertyId}/battery`}>{x.property}</a>: {plural(x.count, 'transmitter')}, oldest since {x.oldest} <Age d={x.days} /></li>)}
+      </Queue>
       <Queue title="Service notes waiting for approval" hint="Review the client wording and approve." n={q.draftNotes.length}>
         {q.draftNotes.map((x) => <li key={x.visitId}><a href={`/visits/${x.visitId}`}>{x.property}</a>: visit {x.visitedOn}, {plural(x.units, 'unit')} <Age d={x.days} limit={LIMITS.notesApproval} /></li>)}
       </Queue>

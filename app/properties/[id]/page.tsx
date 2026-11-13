@@ -1,6 +1,7 @@
 import { followUps } from '@/src/service/verify';
 import { stagedLines, latestAuditBatch, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
 import { today } from '@/src/server/dates';
+import { lowBatteryDevices } from '@/src/service/battery';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireSession } from '@/src/server/session';
@@ -27,6 +28,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
     `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
   const fups = canDocs ? await followUps(db, id) : [];
   const latest = await latestAuditBatch(db, id);
+  const lowCount = canDocs ? (await lowBatteryDevices(db, { propertyId: id })).length : 0;
   const stages = latest ? countStages(await stagedLines(db, latest.id, today())) : null;
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
   const showPrices = can(s.role, 'view_prices');
@@ -47,7 +49,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <p className="small">Latest audit ({latest.on}), flagged units: {(Object.keys(stages) as UnitStage[]).filter((k) => stages[k]).map((k) => `${STAGE_LABEL[k]} ${stages[k]}`).join(' · ')} · <a href={`/properties/${id}/audits/${latest.id}`}>open audit</a></p>
       )}
       {canInvoice && <p><a className="btn secondary" href={`/properties/${id}/invoicing`}>Invoicing →</a></p>}
-      {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a></p>}
+      {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
 
       {canImport && <ImportForm propertyId={id} firstImport={units.length === 0} />}
 

@@ -32,7 +32,9 @@ async function setupProperty(db: Db, s: Spec) {
   if (s.installedByUs) await importParsed(db, pid, parsePsr(synthPsr(units, o)), { createMissing: true });
   await db.query(`UPDATE property SET install_completed_on=$2 WHERE id=$1 AND installed_by_us`, [pid, s.installedOn]);
   const audit = await importParsed(db, pid, parseAutoAudit(synthAutoAudit(units, o)), { createMissing: true });
-  await importParsed(db, pid, parseCimNextCentury(synthCim(units, o)));
+  // Cedar Court: a few transmitters that still read but report low battery (preventative maintenance).
+  const healthy = units.filter((u) => u.code === 'OK').slice(0, 3).map((u) => u.unit);
+  await importParsed(db, pid, parseCimNextCentury(synthCim(units, s.msa ? { ...o, lowBattery: healthy } : o)));
   return { pid, units, o, audit };
 }
 
