@@ -1,15 +1,20 @@
 // Recording service work. Events are append-only: a correction is a new event that supersedes the old one.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 import { LIVE_EVENT } from '../sql';
 import { touchesFor, coverageFor, recalcCoverage } from './coverage';
 import { loadSettings } from '../queries/audit';
 
-export class ServiceError extends Error {}
+export class ServiceError extends UserError {}
 
-export type Outcome = 'completed' | 'unable_to_access' | 'unable_to_complete';
-export type Action = 'inspect_test' | 'repair' | 'replace' | 'reprogram' | 'other';
-export type Result = 'repaired' | 'replaced' | 'reprogrammed' | 'no_fault_found' | 'unable_to_access' | 'unable_to_complete' | 'other';
-export type PartKind = 'transmitter' | 'meter' | 'combo';
+export const OUTCOMES = ['completed', 'unable_to_access', 'unable_to_complete'] as const;
+export const ACTIONS = ['inspect_test', 'repair', 'replace', 'reprogram', 'other'] as const;
+export const RESULTS = ['repaired', 'replaced', 'reprogrammed', 'no_fault_found', 'unable_to_access', 'unable_to_complete', 'other'] as const;
+export const PART_KINDS = ['transmitter', 'meter', 'combo'] as const;
+export type Outcome = (typeof OUTCOMES)[number];
+export type Action = (typeof ACTIONS)[number];
+export type Result = (typeof RESULTS)[number];
+export type PartKind = (typeof PART_KINDS)[number];
 
 export interface Replacement {
   kind: PartKind;
@@ -49,7 +54,6 @@ export interface VisitInput {
 
 export interface RecordResult { visitId: string; eventIds: string[]; warnings: string[] }
 
-type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
 
 export { LIVE_EVENT } from '../sql';

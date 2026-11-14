@@ -2,7 +2,7 @@ import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { today } from '@/src/server/dates';
 import { catalogItems } from '@/src/server/queries';
-import { saveCatalogItem, setSuggestDefaultAction } from '../actions';
+import { saveCatalogItem, setSuggestDefaultAction } from '../server-actions/catalog';
 import { CatalogImportForm } from './import-form';
 import { Flash, money, one, type SP } from '../ui';
 

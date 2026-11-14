@@ -2,6 +2,7 @@
 // Every word must appear somewhere in the same record (case-insensitive, any order). "1-101" also finds building 1 unit 101.
 // Semantic search (embeddings) is a later layer over the same records.
 import type { Db } from '../db';
+import { LIVE_EVENT } from '../sql';
 import { normLabel } from '../parsers/common';
 
 export type HitKind = 'property' | 'unit' | 'device' | 'service' | 'document' | 'job';
@@ -65,7 +66,7 @@ export async function search(db: Db, q: string, o: SearchOptions): Promise<Hit[]
     `SELECT e.id endpoint_id, v.visited_on::text, b.label building, u.current_label unit, e.service_code service, p.name property, se.action, concat_ws(' — ', se.notes, v.notes) notes,
             v.salesforce_case kase, v.salesforce_work_order wo, ${exact(['v.salesforce_case', 'v.salesforce_work_order'])} rank
        FROM service_event se JOIN visit v ON v.id=se.visit_id JOIN endpoint e ON e.id=se.endpoint_id JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id JOIN property p ON p.id=b.property_id
-      WHERE NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event n WHERE n.supersedes=se.id)
+      WHERE ${LIVE_EVENT}
         AND ${where(`concat_ws(' ', se.notes, v.notes, v.technician, v.salesforce_case, v.salesforce_work_order, se.issue_code, se.action)`)}
       ORDER BY rank, v.visited_on DESC LIMIT ${per}`, args)).rows)
     hits.push({ kind: 'service', rank: r.rank, title: `${r.visited_on} · ${r.building}-${r.unit} ${r.service} · ${r.action.replace('_', '/')}`,

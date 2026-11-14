@@ -1,6 +1,6 @@
 'use client';
 import { useActionState } from 'react';
-import { login } from '../actions';
+import { login } from '../server-actions/account';
 
 export default function LoginForm() {
   const [state, action, pending] = useActionState(login, { error: '' });

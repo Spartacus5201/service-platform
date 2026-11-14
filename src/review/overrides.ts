@@ -1,8 +1,9 @@
 // Reviewer corrections. The rules propose; a person disposes. Every change is logged, and the rules' own answer is kept beside it.
+import { UserError } from '../errors';
 import type { Db } from '../db';
 import type { Recommendation } from '../rules/audit';
 
-export class ReviewError extends Error {}
+export class ReviewError extends UserError {}
 export const ACTIONS: Recommendation['action'][] = ['No action', 'Needs Service', 'Verify ID', 'Investigate', 'Requested by property', 'Unrecognized'];
 const OWNERS = ['property', 'service coordinator'];
 const COMPONENTS = ['meter', 'transmitter', 'both', 'manual_pick'];

@@ -1,7 +1,7 @@
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { ROLES, SETTINGS, getSettings, listUsers, rawFileStats } from '@/src/admin/admin';
-import { purgeNowAction, saveSettingsAction, userChangeAction } from '../actions';
+import { purgeNowAction, saveSettingsAction, userChangeAction } from '../server-actions/admin';
 import { Badge, Flash, one, type SP } from '../ui';
 import { AddUserForm, ResetButton } from './forms';
 

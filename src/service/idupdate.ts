@@ -1,10 +1,9 @@
 // The ID update record: what the billing system (UBS) holds for each unit we changed, and what it should hold now.
 // Built from a visit's replacements; the coordinator can override Port, Net, System and Meter type before export.
 import ExcelJS from 'exceljs';
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { LIVE_EVENT, ServiceError } from './record';
 
-type Q = Pick<Db, 'query'>;
 
 /** The billing system's building / unit numbers are zero-padded (0001 / 000217); screens show them without the zeros. */
 export const billingNbr = (label: string, width: number) => (/^[0-9]+$/.test(label.trim()) ? label.trim().padStart(width, '0') : label.trim());

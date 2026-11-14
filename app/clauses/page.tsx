@@ -1,6 +1,6 @@
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
-import { saveClause } from '../actions';
+import { saveClause } from '../server-actions/catalog';
 import { Badge, Flash, one, type SP } from '../ui';
 
 export default async function Clauses({ searchParams }: { searchParams: SP }) {

@@ -1,6 +1,6 @@
 'use client';
 import { useActionState, useState } from 'react';
-import { recordVisitAction } from '../../actions';
+import { recordVisitAction } from '../../server-actions/field';
 import type { FormState } from '../../types';
 
 export default function VisitForm({ endpointId, propertyId, today, isManual, catalog }: {

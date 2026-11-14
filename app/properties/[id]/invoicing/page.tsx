@@ -4,7 +4,7 @@ import { requireCan } from '@/src/server/session';
 import { getProperty } from '@/src/server/queries';
 import { laborRate } from '@/src/documents/build';
 import { uninvoicedEvents } from '@/src/billing/invoice';
-import { submitInvoiceAction } from '../../../actions';
+import { submitInvoiceAction } from '../../../server-actions/field';
 import { Badge, Flash, money, one, type SP } from '../../../ui';
 
 export default async function Invoicing({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {

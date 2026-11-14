@@ -6,7 +6,7 @@ import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
 import { aarForVisit, AAR_LABEL } from '@/src/service/aar';
 import { RESULT_LABEL } from '@/src/service/phrases';
-import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../actions';
+import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../server-actions/field';
 import type { ReactNode } from 'react';
 import { Badge, Flash, one, us, type SP, type Tone } from '../../ui';
 

@@ -2,7 +2,7 @@ import { getDb } from '@/src/server/db';
 import { requireSession } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { listProperties } from '@/src/server/queries';
-import { createProperty } from './actions';
+import { createProperty } from './server-actions/property';
 import { todayQueues } from '@/src/queries/today';
 import { today } from '@/src/server/dates';
 import { Today } from './today';

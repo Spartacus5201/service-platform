@@ -1,11 +1,11 @@
 'use server';
+import { s } from './form';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { saveModel, EquipmentError } from '@/src/equipment/registry';
-import { withError, withMsg } from './ui';
+import { withError, withMsg } from '../ui';
 
-const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
 const list = (v: string | null) => (v ?? '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 
 export async function saveModelAction(fd: FormData) {

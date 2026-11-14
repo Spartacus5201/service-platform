@@ -1,7 +1,7 @@
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { listServices } from '@/src/lists/services';
-import { saveServiceAction } from '../../list-actions';
+import { saveServiceAction } from '../../server-actions/lists';
 import { Badge, Flash, one, type SP } from '../../ui';
 
 export default async function Services({ searchParams }: { searchParams: SP }) {

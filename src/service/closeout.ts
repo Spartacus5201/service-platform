@@ -1,7 +1,8 @@
 // Service Notes close-out: one record per visit that turns a technician's report into client notes, an internal
 // invoicing sheet, and (part B) the billing ID update. Reads existing visit/event/part history; adds only wording, photos and approval.
-import type { Db } from '../db';
-import { LIVE_EVENT, type Result } from './record';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
+import { LIVE_EVENT, type Result, type Outcome } from './record';
 import { defaultResult, issueLabel, suggestComment } from './phrases';
 import { invoicingFor, laborRate, CHARGE_CODES, WORK_LABEL, type ChargeCode } from '../documents/build';
 import { getPropertyPrices } from '../documents/systemnotes';
@@ -10,8 +11,7 @@ import { currentPart } from '../equipment/registry';
 import { groupWork, type WorkGroup } from '../documents/layout';
 import type { FrozenLine } from '../documents/render';
 
-export class CloseoutError extends Error {}
-type Q = Pick<Db, 'query'>;
+export class CloseoutError extends UserError {}
 
 export interface CloseoutUnit {
   eventId: string; endpointId: string;
@@ -22,7 +22,7 @@ export interface CloseoutUnit {
   action: string; laborCovered: boolean; partCovered: boolean;
 }
 export interface Closeout {
-  visit: { id: string; visitedOn: string; technician: string | null; outcome: string; status: 'draft' | 'approved'; approvedAt: string | null; summary: string | null;
+  visit: { id: string; visitedOn: string; technician: string | null; outcome: Outcome; status: 'draft' | 'approved'; approvedAt: string | null; summary: string | null;
     salesforceCase: string | null; salesforceWorkOrder: string | null; documentNumber: string | null; documentId: string | null; notes: string | null };
   property: { id: string; name: string; classId: string; address: string | null; city: string | null; state: string | null; zip: string | null };
   contact: { name: string | null; phone: string | null; email: string | null };
@@ -44,7 +44,7 @@ export function countIssues(units: { issueCode: string | null }[]) {
 const num = (v: string | null) => (v === null ? null : Number(v));
 
 export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
-  const v = (await db.query<{ id: string; property_id: string; visited_on: string; technician: string | null; outcome: string; notes_status: 'draft' | 'approved'; approved_at: string | null;
+  const v = (await db.query<{ id: string; property_id: string; visited_on: string; technician: string | null; outcome: Outcome; notes_status: 'draft' | 'approved'; approved_at: string | null;
     client_summary: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null; doc_number: string | null; document_id: string | null }>(
     `SELECT v.id, v.property_id, v.visited_on::text, v.technician, v.outcome, v.notes_status, v.approved_at::text, v.client_summary, v.salesforce_case, v.salesforce_work_order, v.notes, v.document_id,
             (SELECT d.number FROM document d WHERE d.id=v.document_id) doc_number

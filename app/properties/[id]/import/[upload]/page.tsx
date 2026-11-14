@@ -3,7 +3,7 @@ import { requireCan } from '@/src/server/session';
 import { getProperty } from '@/src/server/queries';
 import { wizardView, WizardError, type WizardView } from '@/src/importer/wizard';
 import { TARGETS } from '@/src/importer/targets';
-import { wizTableAction, wizTargetAction, wizColumnsAction, wizValuesAction, wizExcludeAction, wizImportAction, wizDiscardAction } from '../../../../import-actions';
+import { wizTableAction, wizTargetAction, wizColumnsAction, wizValuesAction, wizExcludeAction, wizImportAction, wizDiscardAction } from '../../../../server-actions/wizard';
 import { Badge, Flash, one, type SP } from '../../../../ui';
 
 const HINT: Record<string, string> = { service: 'Water, Gas or Electric', occupants: 'a number, e.g. 0', battery_level: 'a percent, e.g. 40', move_in: 'a date, e.g. 01/31/2026', move_out: 'a date, e.g. 01/31/2026' };

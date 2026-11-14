@@ -1,6 +1,6 @@
 'use client';
 import { useActionState, useEffect } from 'react';
-import { importReport } from '../../actions';
+import { importReport } from '../../server-actions/imports';
 import type { ImportUi } from '../../types';
 
 const KIND: Record<string, string> = {

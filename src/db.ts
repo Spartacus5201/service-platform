@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 export type Db = PGlite;
+/** Anything that can run a query: the database or an open transaction. Functions that only read or write take this. */
+export type Q = Pick<Db, 'query'>;
 
 function findMigrationsDir(): string {
   const candidates = [

@@ -1,4 +1,5 @@
 'use server';
+import { s, isRedirect } from './form';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
@@ -6,10 +7,8 @@ import { ImportError } from '@/src/import/commit';
 import { ParseError } from '@/src/parsers/common';
 import { WizardError, getUpload, wizardView, chooseTarget, saveState, setColumns, addLookups, setExcluded, setTable, commitWizard, discardUpload, getLayout, retireLayout } from '@/src/importer/wizard';
 import type { Target } from '@/src/importer/layout';
-import { withError, withMsg } from './ui';
+import { withError, withMsg } from '../ui';
 
-const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
-const isRedirect = (e: unknown) => typeof e === 'object' && e !== null && 'digest' in e && String((e as { digest: unknown }).digest).startsWith('NEXT_REDIRECT');
 const known = (e: unknown) => e instanceof WizardError || e instanceof ImportError || e instanceof ParseError;
 const page = (pid: string, id: string) => `/properties/${pid}/import/${id}`;
 

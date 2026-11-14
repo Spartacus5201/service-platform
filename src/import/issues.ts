@@ -3,12 +3,12 @@
 //   id_mismatch     the file's transmitter ID differs from the one on record (the record was not changed)
 //   id_elsewhere    the file gives this unit a transmitter that is on record at another unit (it was not moved)
 // Re-checked after every import: an issue resolves itself once the records catch up.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 import { normLabel } from '../parsers/common';
 import { Registry } from './commit';
 
-type Q = Pick<Db, 'query'>;
-export class IssueError extends Error {}
+export class IssueError extends UserError {}
 
 export interface ImportIssue {
   id: string; propertyId: string; batchId: string | null; kind: 'unmatched_unit' | 'id_mismatch' | 'id_elsewhere';

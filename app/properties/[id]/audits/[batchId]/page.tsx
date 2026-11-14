@@ -6,7 +6,8 @@ import { can } from '@/src/auth/auth';
 import { auditLines } from '@/src/queries/audit';
 import { ACTIONS } from '@/src/review/overrides';
 import { stagedLines, countStages, STAGE_LABEL, type UnitStage } from '@/src/service/unitstatus';
-import { createDocumentAction, overrideAction } from '../../../../actions';
+import { createDocumentAction } from '../../../../server-actions/documents';
+import { overrideAction } from '../../../../server-actions/review';
 import { openJobs } from '@/src/jobs/jobs';
 import { Badge, Flash, actionTone, warrantyTone, one, us, type SP } from '../../../../ui';
 

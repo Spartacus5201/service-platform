@@ -1,11 +1,12 @@
 // First run: the first administrator. Until one exists, /setup needs a one-time setup code that is printed in the
 // server's console (the window or log of whoever started it), so nobody else on the network can claim the app first.
+import { UserError } from '../errors';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import type { Db } from '../db';
 import { createUser } from './auth';
 
-export class SetupDoneError extends Error {}
-export class SetupError extends Error {}
+export class SetupDoneError extends UserError {}
+export class SetupError extends UserError {}
 
 const hash = (code: string) => createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
 const users = async (q: Pick<Db, 'query'>) => Number((await q.query<{ n: string }>(`SELECT count(*) n FROM app_user`)).rows[0].n);

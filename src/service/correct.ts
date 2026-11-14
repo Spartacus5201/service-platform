@@ -1,11 +1,10 @@
 // Fixing recorded service. Nothing is deleted: events are superseded or voided, visit and device fields are changed
 // with a reason, and every change is written to the audit log and shown on the visit.
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { loadSettings } from '../queries/audit';
 import { correctEventIn, LIVE_EVENT, ServiceError, type EventPatch, type Outcome } from './record';
 import { recalcCoverage, type Recalc } from './coverage';
 
-type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
 const need = (reason: string | null | undefined) => { const r = (reason ?? '').trim(); if (!r) throw new ServiceError('Say why the change is needed.'); return r; };
 const log = (q: Q, userId: string | null, action: string, entity: string, id: string, detail: unknown) =>

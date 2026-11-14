@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { closeoutData } from '@/src/service/closeout';
-import { correctVisitAction } from '../../../actions';
+import { correctVisitAction } from '../../../server-actions/field';
 import { Flash, one, type SP } from '../../../ui';
 
 const ACTIONS = [['inspect_test', 'Inspect / test'], ['repair', 'Repair'], ['reprogram', 'Reprogram'], ['other', 'Other']];

@@ -1,10 +1,10 @@
 // Equipment registry: one row per equipment model. Reports name a model by a short code (TR4, TR201); the registry
 // says who makes it, whether it is still current, what replaces it, which catalog part is quoted to replace it,
 // and which battery it takes. Prices stay in the catalog (dated), so a model always quotes today's price.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 
-type Q = Pick<Db, 'query'>;
-export class EquipmentError extends Error {}
+export class EquipmentError extends UserError {}
 
 export const KINDS = ['transmitter', 'meter', 'combo', 'repeater', 'collector', 'receiver'] as const;
 export type Kind = (typeof KINDS)[number];

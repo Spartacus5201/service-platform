@@ -5,7 +5,7 @@ import { requireCan } from '@/src/server/session';
 import { today } from '@/src/server/dates';
 import { getProperty } from '@/src/server/queries';
 import { auditLines, needsAction } from '@/src/queries/audit';
-import { createCloseoutAction } from '../../../../actions';
+import { createCloseoutAction } from '../../../../server-actions/field';
 import { Flash, one, type SP } from '../../../../ui';
 
 const ACTIONS = [['inspect_test', 'Inspect / test'], ['repair', 'Repair'], ['replace', 'Replace'], ['reprogram', 'Reprogram'], ['other', 'Other']];

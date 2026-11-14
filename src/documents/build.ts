@@ -1,5 +1,6 @@
 // Document builder: WA, Proposal, RFM. Drafts are editable; issuing freezes a version; edits after that start the next version.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 import { replacementFor } from '../equipment/registry';
 import { CATALOG_AS_OF } from '../sql';
 import { setting } from '../settings';
@@ -11,10 +12,10 @@ import { installLayer } from '../rules/warranty';
 import { loadSettings } from '../queries/audit';
 import { bringList, getPropertyPrices, getSystemNotes } from './systemnotes';
 
-export class DocumentError extends Error {}
-export type DocType = 'WA' | 'Proposal' | 'RFM';
+export class DocumentError extends UserError {}
+export const DOC_TYPES = ['WA', 'Proposal', 'RFM'] as const;
+export type DocType = (typeof DOC_TYPES)[number];
 
-type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
 
 const yymmdd = (iso: string) => iso.slice(2, 4) + iso.slice(5, 7) + iso.slice(8, 10);
@@ -115,7 +116,7 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
       const rate = await laborRate(tx);
       const propPrices = await getPropertyPrices(tx, input.propertyId);
       const laborDefault = propPrices.Labor ?? rate;
-      const todo = needsAction(await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn));
+      const todo = needsAction(await auditLines(tx, input.fromAuditBatch, input.createdOn));
       const { pmSettings, batteryFor, forWa, PM_DESCRIPTION } = await import('../service/battery');
       const pm = await pmSettings(tx);
       for (const l of todo) {
@@ -145,7 +146,7 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
       }
       // Preventative maintenance: transmitters still reading with a battery at or below the WA level get their own line group.
       const todoIds = new Set(todo.map((l) => l.endpointId));
-      const pmLines = (await auditLines(tx as unknown as Db, input.fromAuditBatch, input.createdOn)).filter((l) => forWa(l.lowBattery, pm) && !todoIds.has(l.endpointId));
+      const pmLines = (await auditLines(tx, input.fromAuditBatch, input.createdOn)).filter((l) => forWa(l.lowBattery, pm) && !todoIds.has(l.endpointId));
       for (const l of pmLines) {
         const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
         const covered = pm.warranty === 'never' ? { labor: false, part: false } : { labor: l.coverage.laborCovered, part: l.coverage.partCovered };
@@ -172,7 +173,7 @@ async function draftGuard(q: Q, versionId: string) {
   if (v.status !== 'draft') throw new DocumentError('This version is issued and locked. Start a new version to edit.');
 }
 
-export async function addLine(db: Db, versionId: string, l: LineInput): Promise<string> {
+export async function addLine(db: Q, versionId: string, l: LineInput): Promise<string> {
   await draftGuard(db, versionId);
   let price = l.unitPrice ?? null;
   if (price === null && l.catalogItemId) {
@@ -185,7 +186,7 @@ export async function addLine(db: Db, versionId: string, l: LineInput): Promise<
     [versionId, l.endpointId ?? null, l.issueCode ?? null, l.description, l.catalogItemId ?? null, l.quantity ?? 1, price, l.laborCovered ?? false, l.partCovered ?? false, l.component ?? null, l.include ?? true, l.laborPrice ?? null]))!.id;
 }
 
-export async function updateLine(db: Db, lineId: string, patch: Partial<LineInput>): Promise<void> {
+export async function updateLine(db: Q, lineId: string, patch: Partial<LineInput>): Promise<void> {
   const row = await one<{ version_id: string }>(db, `SELECT version_id FROM document_line WHERE id=$1`, [lineId]);
   if (!row) throw new DocumentError('Unknown line.');
   await draftGuard(db, row.version_id);
@@ -304,4 +305,34 @@ function addDays(iso: string, n: number): string {
 }
 async function settingsDays(db: Q): Promise<{ quoteDays: number }> {
   return { quoteDays: await setting(db, 'quote_valid_days') };
+}
+
+export interface DraftHeader {
+  title: string | null; salesforceCase: string | null; salesforceWorkOrder: string | null; chargeCode: string | null;
+  addressee: string | null; notes: string | null; shipping: number | null; preparedBy: string | null;
+}
+
+/**
+ * Save a draft from the document screen: line changes, an added line and the header, in one transaction (all or
+ * nothing). Someone without price permission never changes a price: their line prices are ignored and the
+ * shipping stays as it was.
+ */
+export async function saveDraft(db: Db, documentId: string, versionId: string, d: { lines: { id: string; patch: Partial<LineInput> }[]; newLine: LineInput | null; header: DraftHeader }, canPrice: boolean): Promise<void> {
+  await db.transaction(async (tx) => {
+    const v = await one<{ document_id: string }>(tx, `SELECT document_id FROM document_version WHERE id=$1`, [versionId]);
+    if (!v || v.document_id !== documentId) throw new DocumentError('That version belongs to another document.');
+    await draftGuard(tx, versionId);
+    for (const l of d.lines) {
+      const own = await one<{ version_id: string }>(tx, `SELECT version_id FROM document_line WHERE id=$1`, [l.id]);
+      if (!own || own.version_id !== versionId) throw new DocumentError('A line on the form belongs to another version.');
+      const patch = { ...l.patch }; if (!canPrice) { delete patch.unitPrice; delete patch.laborPrice; }
+      await updateLine(tx, l.id, patch);
+    }
+    if (d.newLine) await addLine(tx, versionId, canPrice ? d.newLine : { ...d.newLine, unitPrice: null, laborPrice: null });
+    const h = d.header;
+    await tx.query(`UPDATE document SET title=$2, salesforce_case=$3, salesforce_work_order=$4, charge_code=COALESCE($5, charge_code), addressee=$6, notes=$7,
+                      shipping=CASE WHEN $10 THEN $8 ELSE shipping END, prepared_by=$9 WHERE id=$1`,
+      [documentId, h.title, h.salesforceCase, h.salesforceWorkOrder, (h.chargeCode && h.chargeCode in CHARGE_CODES) ? h.chargeCode : null,
+       h.addressee, h.notes, canPrice ? h.shipping : null, h.preparedBy, canPrice]);
+  });
 }

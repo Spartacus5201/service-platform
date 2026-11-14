@@ -1,7 +1,8 @@
 // Writes a parsed report into the database. One transaction per import; re-importing the same file is a no-op.
+import { UserError } from '../errors';
 import { confirmIdUpdates } from '../service/verify';
 import { createHash } from 'node:crypto';
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { setting } from '../settings';
 import { normLabel } from '../parsers/common';
 import type { Parsed } from '../parsers';
@@ -43,9 +44,8 @@ export interface ImportResult {
   warnings: string[];
 }
 
-export class ImportError extends Error {}
+export class ImportError extends UserError {}
 
-type Q = Pick<Db, 'query'>;
 
 const one = async <T>(q: Q, sql: string, p: unknown[] = []): Promise<T | undefined> =>
   (await q.query<T>(sql, p)).rows[0];

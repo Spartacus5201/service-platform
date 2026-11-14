@@ -2,15 +2,17 @@
 // Stage, timeline and money are all derived from what is linked to the job (audit, documents, visits,
 // invoicing, ID updates, post-service audit). Only the request and the close are typed in.
 // Authorization and scheduling live on the Salesforce case; salesforce_status mirrors it.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
+import { LIVE_EVENT } from '../sql';
 import { aarForVisit, type AarOutcome } from '../service/aar';
 import { documentTotal, type FrozenContent } from '../documents/render';
 import { totals } from '../documents/layout';
 
-type Q = Pick<Db, 'query'>;
-export class JobError extends Error {}
+export class JobError extends UserError {}
 
-export type JobSource = 'salesforce' | 'phone' | 'email' | 'audit' | 'other';
+export const JOB_SOURCES = ['salesforce', 'phone', 'email', 'audit', 'other'] as const;
+export type JobSource = (typeof JOB_SOURCES)[number];
 export const SOURCE_LABEL: Record<JobSource, string> = { salesforce: 'Salesforce case', phone: 'Phone', email: 'Email', audit: 'Audit', other: 'Other' };
 
 export type JobStage = 'requested' | 'audited' | 'drafting' | 'quoted' | 'serviced' | 'to_invoice' | 'follow_up' | 'verifying' | 'ready' | 'closed';
@@ -136,7 +138,7 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
 
   const vs = (await db.query<{ id: string; visited_on: string; outcome: string; notes_status: string; approved_on: string | null; units: string }>(
     `SELECT v.id, v.visited_on::text, v.outcome, v.notes_status, v.approved_at::date::text approved_on,
-            (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id AND NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event x WHERE x.supersedes=se.id)) units
+            (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id AND ${LIVE_EVENT}) units
        FROM visit v WHERE v.job_id=$1 ORDER BY v.visited_on, v.created_at`, [id])).rows;
   const visits: JobDetail['visits'] = [];
   const outcomes: Record<AarOutcome, number> = { fixed: 0, still_failing: 0, new_problem: 0, revisit: 0, awaiting_audit: 0 };
@@ -146,7 +148,7 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
     const inv = (await db.query<{ submitted_on: string; ref: string | null; amount: string | null; open: string }>(
       `SELECT min(s.submitted_on)::text submitted_on, string_agg(DISTINCT s.external_ref, ', ') ref,
               sum(CASE WHEN il.billable THEN il.amount * 1 ELSE 0 END)::text amount,
-              (SELECT count(*) FROM service_event se WHERE se.visit_id=$1 AND NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event x WHERE x.supersedes=se.id)
+              (SELECT count(*) FROM service_event se WHERE se.visit_id=$1 AND ${LIVE_EVENT}
                   AND NOT EXISTS (SELECT 1 FROM invoice_line l2 WHERE l2.service_event_id=se.id))::text open
          FROM invoice_line il JOIN invoice_submission s ON s.id=il.submission_id
          JOIN service_event se ON se.id = COALESCE(il.service_event_id, (SELECT ep.service_event_id FROM event_part ep WHERE ep.id=il.event_part_id))

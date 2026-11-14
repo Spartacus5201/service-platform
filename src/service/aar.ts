@@ -2,13 +2,13 @@
 // For each unit serviced on a visit (or on every visit that worked one WA): what the audit found before,
 // what the technician did, and what the first audit or check-in after the visit shows. The "after" judgement
 // is the existing verification rule (verify.ts); this module only adds the "before" side and the summary.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 import { closeoutData, type Closeout } from './closeout';
 import { verifyVisit } from './verify';
 import { RESULT_LABEL } from './phrases';
 import { setting, SETTING_DEFAULTS } from '../settings';
 
-type Q = Pick<Db, 'query'>;
 export type AarOutcome = 'fixed' | 'still_failing' | 'new_problem' | 'revisit' | 'awaiting_audit';
 export const AAR_LABEL: Record<AarOutcome, string> = {
   fixed: 'Fixed', still_failing: 'Still failing', new_problem: 'New problem', revisit: 'Revisit needed', awaiting_audit: 'Awaiting audit',
@@ -96,7 +96,7 @@ export async function aarForDocument(db: Db, documentId: string): Promise<Aar> {
   const d = (await db.query<{ id: string; number: string; type: string }>(`SELECT id, number, type FROM document WHERE id=$1`, [documentId])).rows[0];
   if (!d) throw new Error('Unknown document.');
   const vs = (await db.query<{ id: string }>(`SELECT id FROM visit WHERE document_id=$1 ORDER BY visited_on, created_at`, [documentId])).rows;
-  if (!vs.length) throw new Error('No visits are linked to this document yet.');
+  if (!vs.length) throw new UserError('No visits are linked to this document yet.');
   const parts = [];
   for (const v of vs) parts.push(await visitRows(db, v.id));
   const rows = parts.flatMap((p) => p.rows);

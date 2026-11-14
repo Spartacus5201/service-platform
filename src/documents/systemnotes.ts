@@ -1,7 +1,7 @@
 // WA Notes: per-property system configuration, technician instructions, equipment to bring and property-specific prices.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 
-type Q = Pick<Db, 'query'>;
 export const BRANDS = ['Aclara', 'Byram', 'Inovonics', 'Itron', 'NextCentury', 'SpeedRead', 'Stealth', 'Tehama'];
 export const MILESTONES = ['Install Complete', 'Takeover', 'Upgraded'] as const;
 export const UTILITIES = ['Water', 'Cold', 'Hot', 'Electric', 'Gas', 'HVAC', 'Remote Reader', 'RTM', 'Transmitter'];
@@ -36,8 +36,8 @@ const clean = (s: string | null | undefined) => (s ?? '').trim() || null;
 
 /** Replace the property's notes and prices as one unit. */
 export async function saveSystemNotes(db: Db, propertyId: string, n: SystemNotes, prices: PropertyPrices, msa: boolean, userId: string | null): Promise<void> {
-  for (const [item, p] of Object.entries(prices)) if (!PRICE_ITEMS.includes(item) || !Number.isFinite(p) || p < 0 || Math.round(p * 100) !== p * 100) throw new Error(`Price for "${item}" must be a dollar amount.`);
-  for (const e of n.equipment) if (!Number.isInteger(e.qty) || e.qty < 1) throw new Error('Equipment quantities must be whole numbers of 1 or more.');
+  for (const [item, p] of Object.entries(prices)) if (!PRICE_ITEMS.includes(item) || !Number.isFinite(p) || p < 0 || Math.round(p * 100) !== p * 100) throw new UserError(`Price for "${item}" must be a dollar amount.`);
+  for (const e of n.equipment) if (!Number.isInteger(e.qty) || e.qty < 1) throw new UserError('Equipment quantities must be whole numbers of 1 or more.');
   await db.transaction(async (tx) => {
     await tx.query(
       `INSERT INTO property_system (property_id,utilities,system_brand,system_id,collector_location,milestone_kind,milestone_on,tech_note,transmitter_device,meter_device,equipment,updated_by,updated_at)

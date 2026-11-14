@@ -1,4 +1,4 @@
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { readWorkbook, headerMap, str, num, ParseError, type Cell } from '../parsers/common';
 
 export interface PriceChange { name: string; partType: string | null; from: number | null; to: number }
@@ -36,7 +36,7 @@ export async function importInventory(db: Db, bytes: Uint8Array, asOf: string, a
 
   const res: CatalogImportResult = { applied: apply, sheet: sheet.name, rows: 0, added: 0, changed: 0, unchanged: 0, skippedNoPrice: 0, obsolete: 0, changes: [], addedNames: [] };
   const seen = new Set<string>();
-  const run = async (q: Db) => {
+  const run = async (q: Q) => {
     for (const r of sheet.rows.slice(hi + 1)) {
       const name = str(col(r, 'description')); if (!name) continue;
       res.rows++;
@@ -75,7 +75,7 @@ export async function importInventory(db: Db, bytes: Uint8Array, asOf: string, a
         [partType ?? '', name, partNo ?? '', !obsolete]);
     }
   };
-  if (apply) await db.transaction(async (tx) => run(tx as unknown as Db)); else await run(db);
+  if (apply) await db.transaction(async (tx) => run(tx)); else await run(db);
   if (!res.rows) throw new ParseError('The Inventory sheet has no items.');
   return res;
 }

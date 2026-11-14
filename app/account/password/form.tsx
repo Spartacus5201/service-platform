@@ -1,6 +1,6 @@
 'use client';
 import { useActionState } from 'react';
-import { changePasswordAction } from '../../actions';
+import { changePasswordAction } from '../../server-actions/account';
 
 export default function PasswordForm() {
   const [state, action, pending] = useActionState(changePasswordAction, { error: '' });

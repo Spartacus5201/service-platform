@@ -1,5 +1,5 @@
 import type { ImportIssue } from '@/src/import/issues';
-import { resolveIssueAction } from '../../actions';
+import { resolveIssueAction } from '../../server-actions/imports';
 import { us } from '../../ui';
 
 /** Open import problems for one property, each with what can be done about it. */

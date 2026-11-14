@@ -5,14 +5,14 @@ import { listJobs } from '@/src/jobs/jobs';
 import { openIssues } from '@/src/import/issues';
 import { ImportIssues } from './issues';
 import { StageBadge } from '../../jobs/stage';
-import { createJobAction } from '../../actions';
+import { createJobAction } from '../../server-actions/jobs';
 import { lowBatteryDevices } from '@/src/service/battery';
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireSession } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { getProperty, propertyDocuments, propertyImports, propertyUnits } from '@/src/server/queries';
-import { saveSystemNotesAction, updateProperty } from '../../actions';
+import { saveSystemNotesAction, updateProperty } from '../../server-actions/property';
 import { BRANDS, MILESTONES, PRICE_ITEMS, UTILITIES, equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
 import { Badge, Flash, one, us, type SP } from '../../ui';
 import ImportForm from './import-form';
@@ -140,7 +140,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         </tbody>
       </table></div>
       {canDocs && (
-        <form action={(await import('../../actions')).createDocumentAction} className="card" style={{ marginTop: '1rem' }}>
+        <form action={(await import('../../server-actions/documents')).createDocumentAction} className="card" style={{ marginTop: '1rem' }}>
           <input type="hidden" name="property_id" value={id} />
           <div className="row">
             <div className="field"><label htmlFor="type">New document</label><select id="type" name="type"><option value="RFM">RFM (material only)</option><option value="Proposal">Proposal</option><option value="WA">Work Authorization</option></select></div>

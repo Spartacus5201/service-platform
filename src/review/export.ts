@@ -1,4 +1,5 @@
 // Outputs of a reviewed audit: CSV and Excel for people, and a corpus case (raw files + signed-off audit) for the evaluation harness.
+import { UserError } from '../errors';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import type { Db } from '../db';
@@ -34,7 +35,7 @@ export async function caseZip(db: Db, batchId: string, lines: AuditLine[]): Prom
   if (!b) throw new Error('Unknown import.');
   const raws = (await db.query<{ id: string; kind: string; filename: string | null; raw_file: Uint8Array | null }>(
     `SELECT id, kind, filename, raw_file FROM import_batch WHERE property_id=$1 AND imported_at <= $2 AND raw_file IS NOT NULL ORDER BY imported_at, id`, [b.property_id, b.imported_at])).rows;
-  if (!raws.some((r) => r.id === batchId)) throw new Error('The raw file for this audit has been discarded (180-day retention), so a case cannot be built from it.');
+  if (!raws.some((r) => r.id === batchId)) throw new UserError('The raw file for this audit has been discarded (180-day retention), so a case cannot be built from it.');
   const zip = new JSZip();
   const files: { file: string; purpose?: string }[] = [];
   raws.forEach((r, i) => {

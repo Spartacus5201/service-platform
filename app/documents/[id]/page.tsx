@@ -6,7 +6,7 @@ import { can } from '@/src/auth/auth';
 import { CHARGE_CODES, laborRate, quoteStatus } from '@/src/documents/build';
 import { documentTotal, renderDocumentHtml, type FrozenContent } from '@/src/documents/render';
 import { catalogItems } from '@/src/server/queries';
-import { newVersionAction, reconfirmAction, saveLinesAction } from '../../actions';
+import { newVersionAction, reconfirmAction, saveLinesAction } from '../../server-actions/documents';
 import { Badge, Flash, money, one, type SP } from '../../ui';
 
 export default async function DocumentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {

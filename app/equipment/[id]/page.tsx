@@ -4,7 +4,7 @@ import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { getModel, listModels, inField, catalogOptions, suggestParts, KINDS, STATUSES, STATUS_LABEL, type CatalogOption } from '@/src/equipment/registry';
 import { listServices } from '@/src/lists/services';
-import { saveModelAction } from '../../equipment-actions';
+import { saveModelAction } from '../../server-actions/equipment';
 import { StatusBadge } from '../status';
 import { Flash, localTime, one, type SP } from '../../ui';
 

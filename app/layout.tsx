@@ -2,7 +2,7 @@ import './globals.css';
 import type { ReactNode } from 'react';
 import { getSession } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
-import { logout } from './actions';
+import { logout } from './server-actions/account';
 
 export const metadata = { title: 'Service Platform' };
 export const dynamic = 'force-dynamic';

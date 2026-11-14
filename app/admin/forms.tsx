@@ -1,6 +1,6 @@
 'use client';
 import { useActionState } from 'react';
-import { addUserAction, resetPasswordAction } from '../actions';
+import { addUserAction, resetPasswordAction } from '../server-actions/admin';
 import type { SecretState } from '../types';
 
 function Secret({ s }: { s: SecretState }) {

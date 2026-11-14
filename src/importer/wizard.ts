@@ -1,7 +1,8 @@
 // The import wizard's server side: files waiting to be mapped, saved maps (versioned), and the final import.
 // The wizard never imports what the preview did not show: commit re-runs the same preview, checks the map it
 // is about to save reads this file the same way, then hands the result to the normal commit step.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 import { readWorkbook, parseCsv, type Sheet, type Cell } from '../parsers/common';
 import { importParsed, type ImportResult } from '../import/commit';
 import { BUILTIN } from './builtin';
@@ -13,8 +14,7 @@ import type { ConvertContext } from './convert';
 
 const ctxOf = async (q: Q): Promise<ConvertContext> => ({ services: await listServices(q, { includeRetired: true }) });
 
-type Q = Pick<Db, 'query'>;
-export class WizardError extends Error {}
+export class WizardError extends UserError {}
 
 export interface WizardState {
   target?: Target;

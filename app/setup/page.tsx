@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
-import { firstAdminAction } from '../actions';
+import { firstAdminAction } from '../server-actions/account';
 import { hasSetupCode, issueSetupCode } from '@/src/auth/setup';
 import { Flash, one, type SP } from '../ui';
 

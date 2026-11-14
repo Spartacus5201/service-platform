@@ -4,11 +4,10 @@
 //    complete" on an otherwise completed visit is not a touch.
 //  - Part clock: the service install date of the live device of the component being worked on (the
 //    transmitter for transmitter work, the meter for meter work). Removed and voided devices never count.
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { LIVE_EVENT } from '../sql';
 import { coverage, type Coverage, type ServiceVisit, type WarrantySettings } from '../rules/warranty';
 
-type Q = Pick<Db, 'query'>;
 
 /** Service visits at each endpoint as warranty sees them, optionally leaving one visit out. */
 export async function touchesFor(q: Q, endpointIds: string[], o: { excludeVisitId?: string } = {}): Promise<Map<string, ServiceVisit[]>> {

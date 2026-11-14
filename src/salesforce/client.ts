@@ -4,6 +4,7 @@
 //   live  the company org, using the Client Credentials flow of an External Client App (docs/SALESFORCE-SETUP.md)
 // Live settings: SF_DOMAIN (My Domain URL), SF_CLIENT_ID, SF_CLIENT_SECRET, SF_API_VERSION (default 62.0).
 // Read-only by construction: the only requests this file can make are the token request and GET queries.
+import { UserError } from '../errors';
 import { MOCK_CASES } from './mock';
 
 export interface WorkOrderInfo { number: string; status: string; startDate: string | null }
@@ -12,7 +13,7 @@ export interface CaseInfo {
   accountName: string | null; accountId: string | null; lastModified: string | null; workOrders: WorkOrderInfo[];
 }
 export interface SalesforceClient { mode: 'mock' | 'live'; getCase(caseNumber: string): Promise<CaseInfo | null> }
-export class SalesforceError extends Error {}
+export class SalesforceError extends UserError {}
 
 export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>;
 

@@ -2,7 +2,7 @@ import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { listLayouts } from '@/src/importer/wizard';
 import { TARGETS } from '@/src/importer/targets';
-import { retireLayoutAction } from '../../import-actions';
+import { retireLayoutAction } from '../../server-actions/wizard';
 import { Badge, Flash, one, localDate, type SP } from '../../ui';
 
 export default async function ImportMaps({ searchParams }: { searchParams: SP }) {

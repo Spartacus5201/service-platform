@@ -1,10 +1,10 @@
 // Service codes (ServiceID): an editable list. The code is what the billing system uses and never changes once
 // made; the name and the report words can. A report value is read as a service when it equals the code or one of
 // its words, ignoring case and punctuation. Nothing is guessed from partial words.
-import type { Db } from '../db';
+import { UserError } from '../errors';
+import type { Db, Q } from '../db';
 
-type Q = Pick<Db, 'query'>;
-export class ServiceListError extends Error {}
+export class ServiceListError extends UserError {}
 export interface ServiceType { code: string; name: string; words: string[]; active: boolean; sort: number }
 
 /** Same as the rows migration 022 creates; used where there is no database (the built-in parsers, tests). */

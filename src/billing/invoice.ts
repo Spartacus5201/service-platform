@@ -1,8 +1,9 @@
 // Invoicing: what was done, what is covered, what has gone to admin, and when.
+import { UserError } from '../errors';
 import type { Db } from '../db';
 import { LIVE_EVENT } from '../service/record';
 
-export class InvoiceError extends Error {}
+export class InvoiceError extends UserError {}
 
 export interface UninvoicedEvent {
   eventId: string;

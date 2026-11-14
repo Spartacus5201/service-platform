@@ -1,5 +1,6 @@
 // Built-in login for a handful of users. Kept behind this one module so SSO can replace it later:
 // the rest of the app only ever sees `Session` and calls `authenticate`, `can`, and `changePassword`.
+import { UserError } from '../errors';
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { Db } from '../db';
@@ -14,7 +15,7 @@ const KEYLEN = 32;
 
 /** Format: scrypt$N$r$p$saltHex$hashHex */
 export async function hashPassword(password: string): Promise<string> {
-  if (password.length < 10) throw new Error('Password must be at least 10 characters.');
+  if (password.length < 10) throw new UserError('Password must be at least 10 characters.');
   const salt = randomBytes(16);
   const h = await scrypt(password, salt, KEYLEN, PARAMS);
   return ['scrypt', PARAMS.N, PARAMS.r, PARAMS.p, salt.toString('hex'), h.toString('hex')].join('$');
@@ -43,7 +44,7 @@ const DUMMY = 'scrypt$16384$8$1$00000000000000000000000000000000$000000000000000
 
 /** Failed sign-ins allowed per email, and in total, in the last 15 minutes before sign-in is refused for a while. */
 export const LOGIN_LIMITS = { perEmail: 8, total: 60, minutes: 15 };
-export class LoginLockedError extends Error {}
+export class LoginLockedError extends UserError {}
 
 export async function authenticate(db: Db, email: string, password: string): Promise<Session | null> {
   const recent = (await db.query<{ mine: string; total: string }>(

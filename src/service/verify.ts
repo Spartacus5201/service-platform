@@ -1,12 +1,12 @@
 // Did the work stick? After a visit, later audits and CIM check-ins show whether each touched unit is healthy again.
 // Derived from imported data each time it is asked for, so it is always consistent with what has been imported.
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { LIVE_EVENT } from './record';
+import { liveEvent } from '../sql';
 import { auditLines, type AuditLine } from '../queries/audit';
 import { componentFor } from '../rules/audit';
 import { afterService } from './verdict';
 
-type Q = Pick<Db, 'query'>;
 const usd = (d: string) => (/^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d);
 
 export type VerifyStatus = 'pending' | 'verified' | 'failed';
@@ -82,8 +82,7 @@ export async function verifyVisit(db: Q, visitId: string): Promise<UnitVerificat
 /** Units whose latest service did not fix the problem, across the property. */
 export async function followUps(db: Q, propertyId: string): Promise<(UnitVerification & { visitId: string; visitedOn: string })[]> {
   const evs = await load(db, `v.property_id=$1 AND NOT EXISTS (
-      SELECT 1 FROM service_event s3 JOIN visit v3 ON v3.id=s3.visit_id WHERE s3.endpoint_id=se.endpoint_id AND NOT s3.voided
-        AND NOT EXISTS (SELECT 1 FROM service_event s4 WHERE s4.supersedes=s3.id) AND (v3.visited_on > v.visited_on OR (v3.visited_on = v.visited_on AND s3.created_at > se.created_at)))`, [propertyId]);
+      SELECT 1 FROM service_event s3 JOIN visit v3 ON v3.id=s3.visit_id WHERE s3.endpoint_id=se.endpoint_id AND ${liveEvent('s3')} AND (v3.visited_on > v.visited_on OR (v3.visited_on = v.visited_on AND s3.created_at > se.created_at)))`, [propertyId]);
   const out = []; const cache: LineCache = new Map();
   for (const e of evs) {
     const r = await check(db, e, cache);

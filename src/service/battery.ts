@@ -6,11 +6,10 @@
 //   pm_battery_threshold (percent at or below which a battery is flagged low on audits and reports, default 25),
 //   pm_wa_threshold (percent at or below which a low battery goes on the WA for service, default 1),
 //   pm_battery_price (battery price when the catalog has no battery for the transmitter model, default 9.10).
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { CATALOG_AS_OF } from '../sql';
 import { readSettings } from '../settings';
 
-type Q = Pick<Db, 'query'>;
 export const PM_DESCRIPTION = 'Preventative Maintenance - Transmitter Battery Replacement';
 
 export interface LowBattery {

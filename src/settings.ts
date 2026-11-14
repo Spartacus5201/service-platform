@@ -1,8 +1,7 @@
 // Every numeric setting with its default, in one table. Code reads settings only through here, so a default is
 // written once and a missing or unreadable value always falls back the same way.
-import type { Db } from './db';
+import type { Db, Q } from './db';
 
-type Q = Pick<Db, 'query'>;
 
 export const SETTING_DEFAULTS = {
   int_read_threshold: 5,            // INT: an automated read count at or below this is a candidate

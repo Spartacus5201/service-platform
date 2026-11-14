@@ -1,10 +1,12 @@
 // User and settings administration. Kept free of web code so it is testable and reusable.
+import { UserError } from '../errors';
 import { randomInt } from 'node:crypto';
 import type { Db } from '../db';
 import { readSettings } from '../settings';
 import { hashPassword, type Role } from '../auth/auth';
 
-export class AdminError extends Error {}
+export class AdminError extends UserError {}
+export const ROLE_NAMES = ['admin', 'office', 'coordinator', 'technician'] as const satisfies readonly Role[];
 export const ROLES: { role: Role; label: string; help: string }[] = [
   { role: 'admin', label: 'Admin', help: 'Everything, including users and settings.' },
   { role: 'office', label: 'Office', help: 'Prices, documents, imports, invoicing, service entry.' },
@@ -124,7 +126,7 @@ const ACTION_LABEL: Record<string, string> = {
   login: 'Signed in', login_failed: 'Failed sign-in', password_changed: 'Changed password', setting_changed: 'Changed a setting',
   audit_override: 'Changed an audit result', audit_override_cleared: 'Cleared an audit change', catalog_import: 'Imported catalog prices',
   closeout_approved: 'Approved client notes', event_corrected: 'Corrected a service entry', invoice_ref_recorded: 'Recorded an invoice reference',
-  price_reconfirmed: 'Reconfirmed prices', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map', service_added: 'Added a service code', service_changed: 'Changed a service code', equipment_added: 'Added an equipment model', equipment_changed: 'Changed an equipment model',
+  price_reconfirmed: 'Reconfirmed prices', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map', service_added: 'Added a service code', property_added: 'Added a property', property_changed: 'Changed property details', coverage_recalculated: 'Warranty recalculated after a correction', event_voided: 'Voided a service entry', visit_corrected: 'Corrected a visit', part_id_corrected: 'Corrected a part ID', service_changed: 'Changed a service code', equipment_added: 'Added an equipment model', equipment_changed: 'Changed an equipment model',
 };
 export interface ActivityRow { id: string; at: string; who: string | null; action: string; label: string; entity: string | null; entityId: string | null; detail: string }
 

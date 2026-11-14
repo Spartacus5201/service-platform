@@ -1,6 +1,6 @@
 'use client';
 import { useActionState } from 'react';
-import { importCatalogAction } from '../actions';
+import { importCatalogAction } from '../server-actions/catalog';
 import type { CatalogImportUi } from '../types';
 import { money } from '../ui';
 

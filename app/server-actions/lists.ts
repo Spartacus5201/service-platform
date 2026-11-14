@@ -1,11 +1,14 @@
 'use server';
+import { s as field } from './form';
+
+/** Text field as typed (blank = empty string). */
+const s = (fd: FormData, k: string) => field(fd, k) ?? '';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { saveService, ServiceListError } from '@/src/lists/services';
-import { withError, withMsg } from './ui';
+import { withError, withMsg } from '../ui';
 
-const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' ? v.trim() : ''; };
 
 export async function saveServiceAction(fd: FormData) {
   const sess = await requireCan('manage_users');

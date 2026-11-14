@@ -1,3 +1,4 @@
+import { UserError } from '../errors';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { matchService, DEFAULT_SERVICES, type ServiceType } from '../lists/services';
@@ -242,7 +243,7 @@ export function headerMap(row: Cell[]): Map<string, number> {
 }
 
 /** A file that could not be read. `code` tells callers what to do without matching the message text. */
-export class ParseError extends Error {
+export class ParseError extends UserError {
   constructor(message: string, readonly code: 'unreadable' | 'not_recognised' | 'needs_wizard' = 'unreadable') { super(message); }
 }
 
