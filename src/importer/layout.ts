@@ -5,7 +5,7 @@ import type { Cell } from '../parsers/common';
 
 export type Target = 'devices' | 'unit_directory';
 
-export interface FieldDef { key: string; label: string; type: FieldType; required?: boolean; help?: string }
+export interface FieldDef { key: string; label: string; type: FieldType; required?: boolean; help?: string; /** Header names the wizard suggests this field for (exact match after normHeader). */ aliases?: string[] }
 
 export interface ColumnRule {
   field: string;

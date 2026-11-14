@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseCsv, type Sheet } from '../src/parsers/common';
-import { parseAmrStatus } from '../src/parsers/cim';
+import { parseAmrStatus, type CimParse } from '../src/parsers/cim';
 import { parseUnitDirectory } from '../src/parsers/unitdirectory';
 import { AMR_STATUS, UNIT_DIRECTORY, matchLayouts, preview, convert, serviceCode } from '../src/importer';
 import { synthUnits, synthAmrStatus } from '../src/dev/synthetic';
@@ -99,12 +99,12 @@ describe('importer: matching, drift and overrides', () => {
     expect(p.rejected).toEqual([{ row: 2, reasons: [expect.stringMatching(/Irrigation/)] }]);
     expect(preview(csv(odd), AMR_STATUS, { lookups: { service: { irrigation: 'WS' } } }).importable).toBe(true);
     const ex = preview(csv(odd), AMR_STATUS, { excludeRows: [2] });
-    expect(ex.importable).toBe(true); expect(ex.excluded).toEqual([2]); expect(ex.parsed!.devices).toHaveLength(3);
+    expect(ex.importable).toBe(true); expect(ex.excluded).toEqual([2]); expect((ex.parsed as CimParse).devices).toHaveLength(3);
   });
   it('a fixed value fills a field the file does not have', () => {
     const noUtil = amr.split('\n').map((l) => l.split(',').filter((_, i) => i !== 2).join(',')).join('\n');
     const p = preview(csv(noUtil), AMR_STATUS, { constants: { service: 'Gas' } });
-    expect(p.importable).toBe(true); expect(p.parsed!.devices.every((d) => d.serviceCode === 'GS')).toBe(true);
+    expect(p.importable).toBe(true); expect((p.parsed as CimParse).devices.every((d) => d.serviceCode === 'GS')).toBe(true);
   });
   it('refuses one column for two fields, a column off the sheet, and a missing sheet', () => {
     expect(preview(csv(amr), AMR_STATUS, { columns: { meter_label: 2 } }).blocking.join(' ')).toMatch(/more than one field/);
@@ -114,7 +114,7 @@ describe('importer: matching, drift and overrides', () => {
   it('reports repeated transmitters without dropping them', () => {
     const lines = amr.trim().split('\n'); const twice = [...lines, lines[1]].join('\n');
     const p = preview(csv(twice), AMR_STATUS);
-    expect(p.importable).toBe(true); expect(p.parsed!.devices).toHaveLength(5);
+    expect(p.importable).toBe(true); expect((p.parsed as CimParse).devices).toHaveLength(5);
     expect(p.problems).toEqual([expect.objectContaining({ row: 6, message: 'same as row 2' })]);
   });
 });

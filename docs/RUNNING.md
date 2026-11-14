@@ -9,7 +9,7 @@ The first run installs packages and builds (a few minutes). Later runs start in 
 
 - Data: `.pgdata` in the project folder.
 - Daily backups: `backups/` (one per day while it runs, newest 14 kept).
-- Options (environment variables): `PORT`, `DATA_DIR`, `BACKUP_DIR`, `BACKUP_KEEP`.
+- Options (environment variables): `PORT`, `DATA_DIR`, `BACKUP_DIR`, `BACKUP_KEEP`, `APP_TIMEZONE` (default `America/Chicago`; times on screen are shown in it).
 - Stop: close the window or press Ctrl+C.
 
 Other people on the same network can use it at `http://<this computer's name>:3000` if the firewall allows it. The laptop must be on and running it.

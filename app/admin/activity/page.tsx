@@ -1,7 +1,7 @@
 import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { listActivity, listUsers } from '@/src/admin/admin';
-import { one, type SP } from '../../ui';
+import { localTime, one, type SP } from '../../ui';
 
 export default async function Activity({ searchParams }: { searchParams: SP }) {
   await requireCan('manage_users');
@@ -26,7 +26,7 @@ export default async function Activity({ searchParams }: { searchParams: SP }) {
         <thead><tr><th>When</th><th>Who</th><th>What</th><th>About</th><th>Detail</th></tr></thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id}><td className="small nowrap">{r.at.slice(0, 16).replace('T', ' ')}</td><td>{r.who ?? <span className="small">—</span>}</td><td>{r.label}</td>
+            <tr key={r.id}><td className="small nowrap">{localTime(r.at)}</td><td>{r.who ?? <span className="small">—</span>}</td><td>{r.label}</td>
               <td className="small">{r.entity ?? ''}</td><td className="small">{r.detail}</td></tr>
           ))}
           {!rows.length && <tr><td colSpan={5} className="small">Nothing logged yet.</td></tr>}

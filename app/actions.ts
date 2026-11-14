@@ -26,13 +26,14 @@ import { createJob, updateJob, closeJob, reopenJob, attachAudit, refreshFromSale
 import { salesforce, SalesforceError } from '@/src/salesforce/client';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
+import { WizardError } from '@/src/importer/wizard';
 import { createUser } from '@/src/auth/auth';
 
 const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
 const n = (fd: FormData, k: string): number | null => { const v = s(fd, k); if (v === null) return null; const x = Number(v.replace(/[$,]/g, '')); return Number.isFinite(x) ? x : null; };
 const msgOf = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 const isRedirect = (e: unknown) => typeof e === 'object' && e !== null && 'digest' in e && String((e as { digest: unknown }).digest).startsWith('NEXT_REDIRECT');
-const domainError = (e: unknown) => e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError || e instanceof CloseoutError || e instanceof JobError;
+const domainError = (e: unknown) => e instanceof WizardError || e instanceof ServiceError || e instanceof DocumentError || e instanceof InvoiceError || e instanceof ImportError || e instanceof ParseError || e instanceof ReviewError || e instanceof AdminError || e instanceof CloseoutError || e instanceof JobError;
 
 // ---------- account ----------
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
@@ -115,7 +116,16 @@ export async function importReport(_: ImportUi, fd: FormData): Promise<ImportUi>
   if (!(file instanceof File) || file.size === 0) return { error: 'Choose an .xlsx report or a Unit Directory .csv to import.' };
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const parsed = await parseFile(bytes);
+    // Files the built-in readers do not know (or a person wants to map by hand) go to the import wizard.
+    const toWizard = async () => {
+      const { createUpload } = await import('@/src/importer/wizard');
+      const u = await createUpload(await getDb(), propertyId, file.name, bytes, sess.userId);
+      return { wizardUrl: `/properties/${propertyId}/import/${u.id}` };
+    };
+    if (fd.get('wizard') === 'on') return await toWizard();
+    let parsed;
+    try { parsed = await parseFile(bytes); }
+    catch (e) { if (e instanceof ParseError && /not recognised/.test(e.message)) return await toWizard(); throw e; }
     const asOccupancy = fd.get('purpose') === 'occupancy';
     await purgeExpiredImports(await getDb());     // retention is enforced whenever someone imports
     const r = await importParsed(await getDb(), propertyId, parsed, {

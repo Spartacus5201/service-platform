@@ -13,6 +13,7 @@ export interface ImportUi {
   idChanges?: { building: string; unit: string; was: string; now: string }[];
   warnings?: string[];
   auditUrl?: string;
+  wizardUrl?: string;
 }
 
 export interface SecretState { error?: string; password?: string; who?: string }

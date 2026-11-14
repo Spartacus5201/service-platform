@@ -29,7 +29,7 @@ Goal: any report a person drops in is either imported exactly right, or stopped 
 ## Build order
 1. ~~Layout and map data model + converters + the apply step, with tests.~~ Done: `src/importer/` (convert, layout, apply, targets, builtin, index).
 2. ~~Reproduce the AMR Status Report and Unit Directory with maps and prove identical output to the current parsers on the corpus.~~ Done: identical on 3 real AMR Status Reports (645 rows) and 4 real Unit Directories (968 rows), no problems raised. One deliberate difference: an AMR utility the app does not recognise (e.g. "Irrigation") now stops the row for a person to map; the old parser silently made it water.
-3. Wizard screens: choose table, map columns, preview, save.
+3. ~~Wizard screens: choose table, map columns, preview, save.~~ Done: `/properties/<id>/import/<upload>`; unknown files open it automatically, any file can be opened in it by ticking "Open in the import wizard". Saved maps are listed under Admin → Import maps.
 4. Reproduce the audit reports and CIM, then retire the hand-written parsers.
 5. New data sets as they arrive: each gets a map, a sample file in the corpus, and a test.
 
@@ -47,3 +47,12 @@ For each sample: what it is (which system exports it), which property it is from
 | `index.ts` | `matchLayouts` (rank layouts for a file) and `preview` (apply + importable + parse result). |
 
 Rules the engine enforces: a required field that is blank or unreadable rejects the row; an optional one is left blank and listed as a warning; a file is importable only with nothing blocking and no rejected rows (fix the mapping, add a lookup, or exclude the row); one column cannot feed two fields; a column and a fixed value cannot both fill one field; repeated keys are reported, never dropped.
+
+## Wizard behaviour
+- A file goes to the wizard when the built-in readers do not recognise it, or when a person ticks "Open in the import wizard". A saved map that fits every column is chosen for it automatically.
+- Steps: the table (sheet, header row), what it holds (a saved map or a new map), columns (each app field: a column, or one value for every row), values it cannot read ("read it as", saved with the map), check and import.
+- Columns suggested from header names are exact name matches only, and must be confirmed before anything can be imported.
+- Rows that cannot be read block the import until they are read another way or left out with a reason. The reason is stored with the import.
+- On import, the map about to be saved is re-run alone on the file and must give exactly the preview's result; otherwise nothing is imported.
+- A change to a saved map becomes its next version; built-in maps are never changed (a change is saved as a new map). Each import records the map, version and per-file choices (`import_batch.layout_id`, `layout_version`, `import_overrides`).
+- Files waiting in the wizard are kept 7 days at most, and removed as soon as they are imported or discarded.

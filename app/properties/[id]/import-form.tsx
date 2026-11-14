@@ -1,5 +1,5 @@
 'use client';
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { importReport } from '../../actions';
 import type { ImportUi } from '../../types';
 
@@ -9,13 +9,14 @@ const KIND: Record<string, string> = {
 
 export default function ImportForm({ propertyId, firstImport }: { propertyId: string; firstImport: boolean }) {
   const [r, action, pending] = useActionState<ImportUi, FormData>(importReport, {});
+  useEffect(() => { if (r.wizardUrl) window.location.assign(r.wizardUrl); }, [r.wizardUrl]);
   return (
     <form action={action} className="card">
       <h2 style={{ marginTop: 0 }}>Import a report</h2>
-      <p className="small" style={{ marginTop: 0 }}>Auto Audit, Manual Audit, CIM (NextCentury, Zenner, Inovonics), or PSR. The format is detected from the file.</p>
+      <p className="small" style={{ marginTop: 0 }}>Auto Audit, Manual Audit, CIM (NextCentury, Zenner, Inovonics), PSR, AMR Status Report or Unit Directory are detected from the file. Any other report opens the import wizard, where its columns are mapped once and remembered.</p>
       <input type="hidden" name="property_id" value={propertyId} />
       <div className="row">
-        <div className="field" style={{ flex: 2 }}><label htmlFor="file">Report (.xlsx) or Unit Directory (.csv)</label><input id="file" name="file" type="file" accept=".xlsx,.csv" required /></div>
+        <div className="field" style={{ flex: 2 }}><label htmlFor="file">Report file (.xlsx or .csv)</label><input id="file" name="file" type="file" accept=".xlsx,.csv,.tsv,.txt" required /></div>
         <div className="field">
           <label htmlFor="purpose">Use this file as</label>
           <select id="purpose" name="purpose" defaultValue="report">
@@ -27,6 +28,10 @@ export default function ImportForm({ propertyId, firstImport }: { propertyId: st
       <label style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
         <input type="checkbox" name="create_missing" defaultChecked={firstImport} /> Add units and endpoints this property does not have yet {firstImport && <span className="small">(first import)</span>}
       </label>
+      <label style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+        <input type="checkbox" name="wizard" /> Open in the import wizard (check or change how the columns are read)
+      </label>
+      {r.wizardUrl && <div className="flash" role="status">Opening the import wizard… <a href={r.wizardUrl}>Continue</a></div>}
       <div className="actions"><button type="submit" disabled={pending}>{pending ? 'Importing…' : 'Import'}</button></div>
 
       {r.error && <div className="flash error" role="alert" style={{ marginTop: '.75rem' }}>{r.error}</div>}
