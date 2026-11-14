@@ -10,3 +10,4 @@ credentials*
 !tests/fixtures/*.xlsx
 .env
 .git
+.session-key

@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 export type Db = PGlite;
 
@@ -18,6 +18,7 @@ function findMigrationsDir(): string {
 
 /** Open a database. No dataDir = in-memory. A path = persisted on disk (local dev). */
 export async function openDb(dataDir?: string): Promise<Db> {
+  if (dataDir && !dataDir.includes('://')) mkdirSync(dirname(resolve(dataDir)), { recursive: true });   // e.g. DATA_DIR=data/db on a fresh machine
   const db = new PGlite(dataDir);
   await db.waitReady;
   await migrate(db);

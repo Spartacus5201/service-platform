@@ -48,7 +48,7 @@ export async function addUser(db: Db, by: string | null, i: { email: string; nam
 
 export async function resetPassword(db: Db, by: string | null, userId: string): Promise<string> {
   const password = tempPassword();
-  const r = await db.query(`UPDATE app_user SET password_hash=$2, must_change_password=true WHERE id=$1`, [userId, await hashPassword(password)]);
+  const r = await db.query(`UPDATE app_user SET password_hash=$2, must_change_password=true, session_version=session_version+1 WHERE id=$1`, [userId, await hashPassword(password)]);
   if (!r.affectedRows) throw new AdminError('Unknown user.');
   await log(db, by, 'password_reset', userId, {});
   return password;

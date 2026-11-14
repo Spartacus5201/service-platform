@@ -12,3 +12,4 @@ corpus/real-*/
 tsconfig.tsbuildinfo
 .pgdata-demo/
 backups/
+.session-key

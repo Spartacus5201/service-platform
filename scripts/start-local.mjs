@@ -25,7 +25,8 @@ const changed = Math.max(newest('app'), newest('src'), newest('db'), statSync('p
 if (!built || changed > built) { console.log('Building (only when the code has changed)...'); run(npm, ['run', 'build']); }
 
 const port = process.env.PORT ?? '3000';
-const env = { ...process.env, DATA_DIR: process.env.DATA_DIR ?? '.pgdata', BACKUP_DIR: process.env.BACKUP_DIR ?? 'backups' };
+// A laptop serves plain http, so its sign-in cookie cannot be https-only (servers behind HTTPS keep the secure default).
+const env = { ...process.env, DATA_DIR: process.env.DATA_DIR ?? '.pgdata', BACKUP_DIR: process.env.BACKUP_DIR ?? 'backups', COOKIE_SECURE: process.env.COOKIE_SECURE ?? 'false' };
 console.log(`\nService Platform: http://localhost:${port}\nData: ${env.DATA_DIR}   Daily backups: ${env.BACKUP_DIR}\nClose this window (or press Ctrl+C) to stop.\n`);
 const server = spawn(win ? 'npx.cmd' : 'npx', ['next', 'start', '-p', port], { stdio: 'inherit', env, shell: win });
 setTimeout(() => {

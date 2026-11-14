@@ -75,7 +75,22 @@ async function normalizePrefixedXml(buf: ArrayBuffer | Uint8Array | Buffer): Pro
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
+/** Limits on what one .xlsx may unpack to: real reports are a few MB; a crafted or broken file can claim gigabytes. */
+export const XLSX_LIMITS = { totalBytes: 200 * 1024 * 1024, entries: 2000 };
+
+/** Refuse a workbook whose parts would unpack past the limits, before anything is unpacked. */
+export async function checkWorkbookSize(buf: ArrayBuffer | Uint8Array | Buffer): Promise<void> {
+  let zip: JSZip;
+  try { zip = await JSZip.loadAsync(buf as Buffer); } catch { throw new ParseError('That file is not a readable .xlsx workbook.'); }
+  const names = Object.keys(zip.files);
+  if (names.length > XLSX_LIMITS.entries) throw new ParseError(`That workbook has ${names.length} parts; the most a report can have is ${XLSX_LIMITS.entries}.`);
+  let total = 0;
+  for (const n of names) total += (zip.files[n] as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+  if (total > XLSX_LIMITS.totalBytes) throw new ParseError(`That workbook unpacks to ${Math.round(total / 1048576)} MB; the most a report can be is ${XLSX_LIMITS.totalBytes / 1048576} MB. Save it again from Excel, or split it.`);
+}
+
 export async function readWorkbook(buf: ArrayBuffer | Uint8Array | Buffer): Promise<Sheet[]> {
+  await checkWorkbookSize(buf);
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(buf as ArrayBuffer);

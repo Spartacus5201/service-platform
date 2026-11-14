@@ -9,10 +9,10 @@ const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${Str
 
 /** Write today's backup if it is not there yet, then remove the oldest beyond `keep`. Returns the file written, if any. */
 export async function backupIfDue(db: Db, dir: string, keep = 14, date = localDate()): Promise<string | null> {
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = join(dir, backupName(date));
   let wrote: string | null = null;
-  if (!existsSync(file)) { writeFileSync(file, await backupBytes(db)); wrote = file; }
+  if (!existsSync(file)) { writeFileSync(file, await backupBytes(db), { mode: 0o600 }); wrote = file; }   // owner-only: a backup holds all the data
   const all = readdirSync(dir).filter((f) => /^service-platform-backup-\d{4}-\d{2}-\d{2}\.tgz$/.test(f)).sort();
   for (const f of all.slice(0, Math.max(0, all.length - keep))) rmSync(join(dir, f));
   return wrote;

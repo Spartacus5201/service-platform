@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getDb } from '@/src/server/db';
 import { today } from '@/src/server/dates';
 import { endSession, requireCan, requireSession, startSession } from '@/src/server/session';
-import { authenticate, changePassword, can } from '@/src/auth/auth';
+import { authenticate, changePassword, can, LoginLockedError } from '@/src/auth/auth';
 import { parseFile, ParseError } from '@/src/parsers';
 import { importParsed, purgeExpiredImports, ImportError } from '@/src/import/commit';
 import { addLine, createDocument, issueVersion, newVersion, reconfirmPricing, updateLine, DocumentError } from '@/src/documents/build';
@@ -28,7 +28,7 @@ import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types'
 import { withError, withMsg } from './ui';
 import { WizardError } from '@/src/importer/wizard';
 import { listServices } from '@/src/lists/services';
-import { createUser } from '@/src/auth/auth';
+import { createFirstAdmin, SetupDoneError } from '@/src/auth/setup';
 
 const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
 const n = (fd: FormData, k: string): number | null => { const v = s(fd, k); if (v === null) return null; const x = Number(v.replace(/[$,]/g, '')); return Number.isFinite(x) ? x : null; };
@@ -38,7 +38,9 @@ const domainError = (e: unknown) => e instanceof WizardError || e instanceof Ser
 
 // ---------- account ----------
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
-  const sess = await authenticate(await getDb(), s(fd, 'email') ?? '', String(fd.get('password') ?? ''));
+  let sess;
+  try { sess = await authenticate(await getDb(), s(fd, 'email') ?? '', String(fd.get('password') ?? '')); }
+  catch (e) { if (e instanceof LoginLockedError) return { error: e.message }; throw e; }
   if (!sess) return { error: 'Email or password is incorrect.' };
   await startSession(sess.userId);
   redirect('/');
@@ -46,12 +48,15 @@ export async function login(_: FormState, fd: FormData): Promise<FormState> {
 
 export async function firstAdminAction(fd: FormData) {
   const db = await getDb();
-  if (Number((await db.query<{ n: string }>(`SELECT count(*) n FROM app_user`)).rows[0].n) > 0) redirect('/login');
   const password = String(fd.get('password') ?? '');
   if (password !== String(fd.get('again') ?? '')) redirect(withError('/setup', 'The passwords do not match.'));
   let id: string;
-  try { id = await createUser(db, { email: s(fd, 'email') ?? '', name: s(fd, 'name') ?? 'Administrator', role: 'admin', password, mustChangePassword: false }); }
-  catch (e) { redirect(withError('/setup', msgOf(e))); }
+  try {
+    id = await createFirstAdmin(db, s(fd, 'setup_code') ?? '', { email: s(fd, 'email') ?? '', name: s(fd, 'name') ?? 'Administrator', password });
+  } catch (e) {
+    if (e instanceof SetupDoneError) redirect('/login');
+    redirect(withError('/setup', msgOf(e)));
+  }
   await startSession(id);
   redirect(withMsg('/', 'Administrator created. Add your team under Admin.'));
 }
@@ -66,7 +71,8 @@ export async function changePasswordAction(_: FormState, fd: FormData): Promise<
     const ok = await changePassword(await getDb(), sess.userId, String(fd.get('current') ?? ''), next);
     if (!ok) return { error: 'The current password is not correct.' };
   } catch (e) { return { error: msgOf(e) }; }
-  redirect(withMsg('/', 'Password changed.'));
+  await startSession(sess.userId);              // the change ended every session, this one included
+  redirect(withMsg('/', 'Password changed. Any other device you were signed in on is signed out.'));
 }
 
 // ---------- properties ----------

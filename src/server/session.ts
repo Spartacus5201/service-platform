@@ -1,6 +1,11 @@
-// Cookie sessions: a signed {userId, expiry} token. The user row is re-read on every request, so a deactivated
-// user or a role change takes effect immediately. The signing secret is generated once and kept in the database.
+// Cookie sessions: a signed {userId, version, expiry} token. The user row is re-read on every request, so a
+// deactivated user, a role change, a password change or a sign-out takes effect immediately (the version in the
+// token must match the user's current session_version).
+// The signing key is SESSION_SECRET when set, otherwise a key file kept beside the data folder (never in the
+// database, so backups cannot be used to sign in), created on first use and readable only by the app's user.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb } from './db';
@@ -9,24 +14,38 @@ import { can, type Action, type Role, type Session } from '../auth/auth';
 const COOKIE = 'sp_session';
 const MAX_AGE_S = 60 * 60 * 12;
 
-async function secret(): Promise<string> {
-  const db = await getDb();
-  const r = await db.query<{ value: string }>(`SELECT value FROM setting WHERE key='session_secret'`);
-  if (r.rows[0]) return String(r.rows[0].value);
-  const s = randomBytes(32).toString('hex');
-  await db.query(`INSERT INTO setting (key,value) VALUES ('session_secret',$1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify(s)]);
-  return String((await db.query<{ value: string }>(`SELECT value FROM setting WHERE key='session_secret'`)).rows[0].value);
+/** Where the key file lives: SESSION_KEY_FILE, else ".session-key" next to the data folder. */
+export const keyFile = () => process.env.SESSION_KEY_FILE ?? join(dirname(resolve(process.env.DATA_DIR ?? '.pgdata')), '.session-key');
+
+let cached: string | null = null;
+export function sessionKey(): string {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (cached) return cached;
+  const f = keyFile();
+  if (!existsSync(f)) {
+    mkdirSync(dirname(f), { recursive: true });
+    try { writeFileSync(f, randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' }); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }    // another process made it first
+  }
+  cached = readFileSync(f, 'utf8').trim();
+  return cached;
 }
 
-const sign = (payload: string, key: string) => createHmac('sha256', key).update(payload).digest('base64url');
+/** Secure cookies by default in production; COOKIE_SECURE=false allows plain http (a laptop on its own). */
+const secureCookie = () => (process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production');
+
+const sign = (payload: string) => createHmac('sha256', sessionKey()).update(payload).digest('base64url');
 
 export async function startSession(userId: string): Promise<void> {
-  const payload = Buffer.from(JSON.stringify({ u: userId, e: Date.now() + MAX_AGE_S * 1000 })).toString('base64url');
-  const token = `${payload}.${sign(payload, await secret())}`;
-  (await cookies()).set(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', path: '/', maxAge: MAX_AGE_S });
+  const v = (await (await getDb()).query<{ v: number }>(`SELECT session_version v FROM app_user WHERE id=$1`, [userId])).rows[0]?.v ?? 0;
+  const payload = Buffer.from(JSON.stringify({ u: userId, v, e: Date.now() + MAX_AGE_S * 1000 })).toString('base64url');
+  (await cookies()).set(COOKIE, `${payload}.${sign(payload)}`, { httpOnly: true, sameSite: 'lax', secure: secureCookie(), path: '/', maxAge: MAX_AGE_S });
 }
 
+/** Sign out: this browser's cookie goes, and every other session of the user stops working too. */
 export async function endSession(): Promise<void> {
+  const s = await getSession();
+  if (s) await (await getDb()).query(`UPDATE app_user SET session_version = session_version + 1 WHERE id=$1`, [s.userId]);
   (await cookies()).delete(COOKIE);
 }
 
@@ -35,13 +54,13 @@ export async function getSession(): Promise<Session | null> {
   if (!token) return null;
   const [payload, mac] = token.split('.');
   if (!payload || !mac) return null;
-  const expected = sign(payload, await secret());
+  const expected = sign(payload);
   if (mac.length !== expected.length || !timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
-  let parsed: { u: string; e: number };
+  let parsed: { u: string; v?: number; e: number };
   try { parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()); } catch { return null; }
   if (!parsed.u || parsed.e < Date.now()) return null;
   const r = await (await getDb()).query<{ id: string; email: string; name: string; role: Role; must_change_password: boolean }>(
-    `SELECT id,email,name,role,must_change_password FROM app_user WHERE id=$1 AND active`, [parsed.u]);
+    `SELECT id,email,name,role,must_change_password FROM app_user WHERE id=$1 AND active AND session_version=$2`, [parsed.u, parsed.v ?? -1]);
   const u = r.rows[0];
   return u ? { userId: u.id, email: u.email, name: u.name, role: u.role, mustChangePassword: u.must_change_password } : null;
 }

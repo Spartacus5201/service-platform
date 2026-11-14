@@ -69,10 +69,24 @@ export function documentTotal(c: FrozenContent): number {
 }
 
 /**
+ * The technician's copy of a document's content: every price, the shipping and client-only clauses removed before
+ * any renderer sees it. Both the HTML and the PDF start here, so neither can show a price by mistake.
+ */
+export function forTechnician(c: FrozenContent): FrozenContent {
+  return {
+    ...c, shipping: null,
+    lines: c.lines.map((l) => ({ ...l, unitPrice: null, laborPrice: null })),
+    clauses: c.clauses.filter((x) => x.audience !== 'client'),
+  };
+}
+export const forAudience = (c: FrozenContent, audience: Audience) => (audience === 'tech' ? forTechnician(c) : c);
+
+/**
  * Client audience: prices and totals. Tech audience: the same work with no prices, no totals, and no client-only clauses.
  * Technicians never see pricing: it is removed here, not hidden with CSS.
  */
-export function renderDocumentHtml(c: FrozenContent, audience: Audience): string {
+export function renderDocumentHtml(content: FrozenContent, audience: Audience): string {
+  const c = forAudience(content, audience);
   const showPrice = audience === 'client';
   const groups = groupWork(c.lines);
   const slots = bySlot(c, audience);

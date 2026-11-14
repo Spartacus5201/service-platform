@@ -5,7 +5,9 @@ import type { Db } from '../db';
 import type { AuditLine } from '../queries/audit';
 
 const HEAD = ['Building', 'Unit', 'Address', 'Service', 'Audit result', 'Action', 'Owner', 'Component', 'Reviewer note', 'Changed by reviewer', 'Rules said'];
-const cell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+// A cell starting with = + - @ (or a tab/return) would run as a formula when the CSV is opened in Excel: prefix it with '.
+const safe = (v: string) => (/^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+const cell = (raw: string) => { const v = safe(raw); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
 const rowOf = (l: AuditLine) => [l.building, l.unit, l.address ?? '', l.service, l.code, l.recommendation.action, l.recommendation.owner ?? '', l.recommendation.component ?? '',
   l.override?.reason ?? '', l.override ? 'Yes' : '', l.override ? l.rules.action : ''];
 

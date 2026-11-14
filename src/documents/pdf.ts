@@ -3,7 +3,7 @@
 import PDFDocument from 'pdfkit';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Audience, type FrozenContent } from './render';
+import { forAudience, type Audience, type FrozenContent } from './render';
 import { bySlot, cityLine, groupWork, invoicingCode, totals, unitRows, type WorkGroup } from './layout';
 
 export const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -24,7 +24,8 @@ const TITLE: Record<FrozenContent['type'], string> = {
   WA: 'Utility Submetering Service Authorization', Proposal: 'Meter Service Work Authorization Proposal', RFM: 'Request for Material',
 };
 
-export async function renderPdf(c: FrozenContent, audience: Audience): Promise<Uint8Array> {
+export async function renderPdf(content: FrozenContent, audience: Audience): Promise<Uint8Array> {
+  const c = forAudience(content, audience);       // the technician copy has no prices to show
   const client = audience === 'client';
   const doc = new PDFDocument({ size: 'LETTER', margins: { top: 40, bottom: 64, left: 48, right: 48 }, bufferPages: true,
     info: { Title: `${c.number} ${c.title ?? ''}`.trim(), Author: 'Minol Service Platform' } });

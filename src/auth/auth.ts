@@ -28,7 +28,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-export async function createUser(db: Db, u: { email: string; name: string; role: Role; password: string; mustChangePassword?: boolean }): Promise<string> {
+export async function createUser(db: Pick<Db, 'query'>, u: { email: string; name: string; role: Role; password: string; mustChangePassword?: boolean }): Promise<string> {
   const hash = await hashPassword(u.password);
   const r = await db.query<{ id: string }>(
     `INSERT INTO app_user (email,name,role,password_hash,must_change_password) VALUES (lower($1),$2,$3,$4,$5)
@@ -41,7 +41,16 @@ export async function createUser(db: Db, u: { email: string; name: string; role:
 // A real hash to compare against when the email is unknown, so timing does not reveal which emails exist.
 const DUMMY = 'scrypt$16384$8$1$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
+/** Failed sign-ins allowed per email, and in total, in the last 15 minutes before sign-in is refused for a while. */
+export const LOGIN_LIMITS = { perEmail: 8, total: 60, minutes: 15 };
+export class LoginLockedError extends Error {}
+
 export async function authenticate(db: Db, email: string, password: string): Promise<Session | null> {
+  const recent = (await db.query<{ mine: string; total: string }>(
+    `SELECT count(*) FILTER (WHERE detail->>'email' = lower(trim($1))) mine, count(*) total FROM audit_log
+      WHERE action='login_failed' AND at > now() - make_interval(mins => $2)`, [email, LOGIN_LIMITS.minutes])).rows[0];
+  if (Number(recent.mine) >= LOGIN_LIMITS.perEmail || Number(recent.total) >= LOGIN_LIMITS.total)
+    throw new LoginLockedError(`Too many failed sign-ins. Wait ${LOGIN_LIMITS.minutes} minutes and try again, or ask an admin to reset the password.`);
   const r = await db.query<{ id: string; email: string; name: string; role: Role; password_hash: string; must_change_password: boolean }>(
     `SELECT id,email,name,role,password_hash,must_change_password FROM app_user WHERE email=lower($1) AND active`, [email.trim()]);
   const u = r.rows[0];
@@ -57,7 +66,8 @@ export async function authenticate(db: Db, email: string, password: string): Pro
 export async function changePassword(db: Db, userId: string, current: string, next: string): Promise<boolean> {
   const r = await db.query<{ password_hash: string }>(`SELECT password_hash FROM app_user WHERE id=$1`, [userId]);
   if (!r.rows[0] || !(await verifyPassword(current, r.rows[0].password_hash))) return false;
-  await db.query(`UPDATE app_user SET password_hash=$2, must_change_password=false WHERE id=$1`, [userId, await hashPassword(next)]);
+  // Every other session of this user ends (the caller starts a fresh one for this browser).
+  await db.query(`UPDATE app_user SET password_hash=$2, must_change_password=false, session_version=session_version+1 WHERE id=$1`, [userId, await hashPassword(next)]);
   await db.query(`INSERT INTO audit_log (user_id,action,entity) VALUES ($1,'password_changed','user')`, [userId]);
   return true;
 }

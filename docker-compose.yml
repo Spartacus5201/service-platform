@@ -9,4 +9,6 @@ services:
       - ./data:/data          # database in ./data/db, daily backups in ./data/backups
     environment:
       BACKUP_KEEP: "14"
-      # COOKIE_SECURE: "true"   # set when served over HTTPS (reverse proxy)
+      # Sign-in cookies are https-only by default. Serving plain http (no reverse proxy)? Then uncomment:
+      # COOKIE_SECURE: "false"
+      # SESSION_SECRET: set to a long random value to keep sessions across rebuilds without the key file in ./data
