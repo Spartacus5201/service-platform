@@ -27,11 +27,23 @@ Goal: any report a person drops in is either imported exactly right, or stopped 
 - Re-importing the same file is a no-op (same as today).
 
 ## Build order
-1. Layout and map data model + converters + the apply step, with tests.
-2. Reproduce the AMR Status Report and Unit Directory with maps and prove identical output to the current parsers on the corpus.
+1. ~~Layout and map data model + converters + the apply step, with tests.~~ Done: `src/importer/` (convert, layout, apply, targets, builtin, index).
+2. ~~Reproduce the AMR Status Report and Unit Directory with maps and prove identical output to the current parsers on the corpus.~~ Done: identical on 3 real AMR Status Reports (645 rows) and 4 real Unit Directories (968 rows), no problems raised. One deliberate difference: an AMR utility the app does not recognise (e.g. "Irrigation") now stops the row for a person to map; the old parser silently made it water.
 3. Wizard screens: choose table, map columns, preview, save.
 4. Reproduce the audit reports and CIM, then retire the hand-written parsers.
 5. New data sets as they arrive: each gets a map, a sample file in the corpus, and a test.
 
 ## What is needed from the data sets
 For each sample: what it is (which system exports it), which property it is from (names can be scrubbed), what the app should do with it (update units, add readings, set battery, add history), and any column whose meaning is not obvious from the header. Several samples of the same report from different properties help most, since they show how the layout varies.
+
+## Code map
+| Module | Job |
+|---|---|
+| `convert.ts` | One converter per field type (text, label, integer, decimal, percent, date, timestamp, yes/no, service). Returns a value or the exact reason it could not. |
+| `layout.ts` | The saved layout (`Layout`, `ColumnRule`) and a person's per-file choices (`Overrides`). |
+| `apply.ts` | Pure: one sheet + layout + overrides to kept / empty / excluded / rejected rows, problems, unused headers and blocking reasons. |
+| `targets.ts` | What each import target accepts (its fields) and how kept rows become the parse result the commit step already uses. |
+| `builtin.ts` | Layouts that ship with the app. |
+| `index.ts` | `matchLayouts` (rank layouts for a file) and `preview` (apply + importable + parse result). |
+
+Rules the engine enforces: a required field that is blank or unreadable rejects the row; an optional one is left blank and listed as a warning; a file is importable only with nothing blocking and no rejected rows (fix the mapping, add a lookup, or exclude the row); one column cannot feed two fields; a column and a fixed value cannot both fill one field; repeated keys are reported, never dropped.
