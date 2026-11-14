@@ -14,8 +14,8 @@ import { can } from '@/src/auth/auth';
 import { getProperty, propertyDocuments, propertyImports, propertyUnits } from '@/src/server/queries';
 import { saveSystemNotesAction, updateProperty } from '../../server-actions/property';
 import { choices, loadLists } from '@/src/lists/lists';
-import { equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
-import { Badge, Flash, one, us, type SP } from '../../ui';
+import { equipmentText, getPropertyPrices, getSystemNotes, propertyPriceHistory } from '@/src/documents/systemnotes';
+import { Badge, Flash, localTime, one, us, type SP } from '../../ui';
 import ImportForm from './import-form';
 import { inField } from '@/src/equipment/registry';
 
@@ -31,7 +31,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const [units, imports, docs] = await Promise.all([propertyUnits(db, id), propertyImports(db, id), propertyDocuments(db, id)]);
   const canImport = can(s, 'import.run'); const canDocs = can(s, 'document.view'); const canInvoice = can(s, 'invoice.manage');
   const canDraft = can(s, 'document.draft'); const canRecord = can(s, 'visit.record'); const canEditProp = can(s, 'property.edit'); const canPriceEdit = can(s, 'price.edit');
-  const [sys, propPrices] = await Promise.all([getSystemNotes(db, id), getPropertyPrices(db, id)]);
+  const [sys, propPrices, priceHistory] = await Promise.all([getSystemNotes(db, id), getPropertyPrices(db, id), propertyPriceHistory(db, id)]);
   const priceRows = [...Object.entries(propPrices), ['', ''], ['', '']].slice(0, Math.max(3, Object.keys(propPrices).length + 1));
   const visits = canDocs ? (await db.query<{ id: string; visited_on: string; technician: string | null; notes_status: string; units: string }>(
     `SELECT v.id, v.visited_on::text, v.technician, v.notes_status, (SELECT count(*) FROM service_event se WHERE se.visit_id=v.id)::text units FROM visit v WHERE v.property_id=$1 ORDER BY v.visited_on DESC, v.created_at DESC LIMIT 15`, [id])).rows : [];
@@ -238,6 +238,11 @@ export default async function PropertyPage({ params, searchParams }: { params: P
                   <div className="field"><label htmlFor={`price_${i + 1}`}>Price</label><input id={`price_${i + 1}`} name={`price_${i + 1}`} className="num" inputMode="decimal" defaultValue={price === '' ? '' : String(price)} /></div>
                 </div>
               ))}
+              {priceHistory.length > 0 && (
+                <details className="small" style={{ marginBottom: '.75rem' }}><summary>Price history ({priceHistory.length} change{priceHistory.length === 1 ? '' : 's'})</summary>
+                  <ul>{priceHistory.map((h, i) => <li key={i}>{h.on.startsWith('2000-01-01') ? 'Before history was kept' : localTime(h.on)}: {lists.label('price_item', h.item)} {h.price === null ? 'removed' : `$${h.price.toFixed(2)}`}{h.by ? ` (${h.by})` : ''}</li>)}</ul>
+                </details>
+              )}
             </>
           )}
           <button type="submit">Save WA Notes</button>

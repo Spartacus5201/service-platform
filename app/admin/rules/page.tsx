@@ -2,7 +2,7 @@ import { getDb } from '@/src/server/db';
 import { requireCan } from '@/src/server/session';
 import { today } from '@/src/server/dates';
 import { DEFAULT_RULES, RULE_ACTIONS, RULE_COMPONENTS, RULE_OWNERS, type Rule, type Recommendation } from '@/src/rules/audit';
-import { getDraft, loadRules, sameRule, testRules } from '@/src/rules/table';
+import { getDraft, loadRules, ruleHistory, rulesOn, sameRule, testRules } from '@/src/rules/table';
 import { loadLists } from '@/src/lists/lists';
 import { loadSettings } from '@/src/queries/audit';
 import { discardRulesAction, saveRulesAction, testRulesAction } from '../../server-actions/rules';
@@ -32,6 +32,8 @@ export default async function RulesPage({ searchParams }: { searchParams: SP }) 
   const [current, draft, lists, { audit }] = await Promise.all([loadRules(db), getDraft(db, me.userId), loadLists(db), loadSettings(db)]);
   const shown = draft ?? current;
   const test = draft ? await testRules(db, draft, { asOf: today() }) : null;
+  const on = /^\d{4}-\d{2}-\d{2}$/.test(one(sp.on) ?? '') ? one(sp.on)! : null;
+  const [history, asOf] = await Promise.all([ruleHistory(db), on ? rulesOn(db, on) : Promise.resolve(null)]);
   const codes = [...new Set([...lists.items('audit_code').map((i) => i.code), ...Object.keys(shown)])];
   const blank: Rule = { component: 'none', method: 'standard', occupied: { action: 'Unrecognized', owner: null, reason: 'Review manually' }, vacant: { action: 'Unrecognized', owner: null, reason: 'Review manually' } };
   return (
@@ -97,6 +99,26 @@ export default async function RulesPage({ searchParams }: { searchParams: SP }) 
           </div>
         </section>
       )}
+      <section id="history" className="card" style={{ marginTop: '1rem' }}>
+        <h2 style={{ marginTop: 0 }}>History</h2>
+        <p className="small">Every saved version is kept. Look up the rules that were in force on a date, for example to explain an older audit or document.</p>
+        {history.length ? <ul className="small">{history.map((h) => <li key={h.on}><a href={`/admin/rules?on=${h.on}#history`}>{us(h.on)}</a>: {h.codes.join(', ')}{h.by ? ` (${h.by})` : ''}</li>)}</ul>
+          : <p className="small">No changes yet: the built-in rules have always applied.</p>}
+        <form method="get" className="row" style={{ alignItems: 'flex-end' }}>
+          <div className="field"><label htmlFor="on">Rules in force on</label><input id="on" name="on" type="date" defaultValue={on ?? ''} required /></div>
+          <div className="field"><button className="secondary" type="submit">Show</button></div>
+        </form>
+        {asOf && on && (
+          <div className="tablewrap"><table>
+            <thead><tr><th>Code</th><th>Part</th><th>Occupied</th><th>Vacant</th></tr></thead>
+            <tbody>{Object.entries(asOf).sort(([a], [b]) => a.localeCompare(b)).map(([code, r]) => (
+              <tr key={code}><td><b>{code}</b>{!sameRule(DEFAULT_RULES[code], r) && <> <Badge tone="warn">changed</Badge></>}</td><td>{PART_TEXT[r.component]}</td>
+                <td>{r.method === 'intermittent' ? 'Count reads (intermittent)' : `${ACTION_TEXT[r.occupied.action] ?? r.occupied.action}${r.occupied.owner ? ` · ${r.occupied.owner}` : ''}: ${r.occupied.reason}`}</td>
+                <td>{r.method === 'intermittent' ? '' : `${ACTION_TEXT[r.vacant.action] ?? r.vacant.action}${r.vacant.owner ? ` · ${r.vacant.owner}` : ''}: ${r.vacant.reason}`}</td></tr>))}</tbody>
+          </table></div>
+        )}
+      </section>
+
     </>
   );
 }

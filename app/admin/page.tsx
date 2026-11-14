@@ -27,7 +27,7 @@ export default async function Admin({ searchParams }: { searchParams: SP }) {
 
       {can(me, 'settings.system') && (<>
       <h2>Backup</h2>
-      <p className="small"><a href="/admin/backup" download>Download a full backup</a>. To restore, stop the app and run <code>npx tsx scripts/restore.ts &lt;file&gt;</code>; the current data is kept alongside.</p>
+      <p className="small"><a href="/admin/backup" download>Download a full backup</a>. To move or keep only the setup (lists, rules, prices, equipment, maps, clauses, roles), use <a href="/admin/setup">Setup</a>. To restore, stop the app and run <code>npx tsx scripts/restore.ts &lt;file&gt;</code>; the current data is kept alongside.</p>
       </>)}
 
       {can(me, 'users.manage') && (<>

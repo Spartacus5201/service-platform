@@ -180,3 +180,26 @@ describe('audit rules', () => {
     expect((await loadRules(w.db)).NEG.occupied.owner).toBe('property');
   }, 60000);
 });
+
+describe('setup file', () => {
+  it('only Admin exports and imports the setup; an import is previewed, then applied', async () => {
+    const { GET } = await import('../app/admin/setup/export/route');
+    const { previewSetupAction, importSetupAction } = await import('../app/server-actions/setup');
+    for (const role of ['manager', 'coordinator', 'technician', 'billing'] as Role[]) {
+      await signInAs(role);
+      expect([role, (await GET()).status]).toEqual([role, 403]);
+      expect([role, await redirectOf(importSetupAction())]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+    }
+    await signInAs('admin');
+    const res = await GET(); expect(res.status).toBe(200);
+    const f = JSON.parse(await res.text());
+    f.sections.settings = f.sections.settings.map((r: { key: string }) => (r.key === 'labor_rate' ? { ...r, value: 101 } : r));
+    const fd = new FormData(); fd.set('file', new File([JSON.stringify(f)], 'setup.json', { type: 'application/json' }));
+    expect(await redirectOf(previewSetupAction(fd))).toMatch(/#preview/);
+    expect((await w.db.query<{ v: unknown }>(`SELECT value v FROM setting WHERE key='labor_rate'`)).rows[0]?.v).not.toBe(101);   // not yet
+    expect(await redirectOf(importSetupAction())).toMatch(/Setup imported: 1 change/);
+    expect((await w.db.query<{ v: unknown }>(`SELECT value v FROM setting WHERE key='labor_rate'`)).rows[0].v).toBe(101);
+    const bad = new FormData(); bad.set('file', new File(['nope'], 'x.json'));
+    expect(await redirectOf(previewSetupAction(bad))).toMatch(/not a setup file/);
+  }, 60000);
+});

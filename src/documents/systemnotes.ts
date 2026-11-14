@@ -30,6 +30,21 @@ export async function getPropertyPrices(q: Q, propertyId: string): Promise<Prope
   return Object.fromEntries(r.rows.map((x) => [x.item, Number(x.price)]));
 }
 
+/** A property's own prices as they were at the end of a date (from the history). */
+export async function propertyPricesOn(q: Q, propertyId: string, date: string): Promise<PropertyPrices> {
+  const r = await q.query<{ item: string; price: string | null }>(
+    `SELECT DISTINCT ON (item) item, price::text FROM property_price_history
+      WHERE property_id=$1 AND changed_at::date <= $2::date ORDER BY item, changed_at DESC, id DESC`, [propertyId, date]);
+  return Object.fromEntries(r.rows.filter((x) => x.price !== null).map((x) => [x.item, Number(x.price)]));
+}
+
+/** Every change to a property's own prices, newest first. */
+export async function propertyPriceHistory(q: Q, propertyId: string) {
+  return (await q.query<{ item: string; price: string | null; on: string; by: string | null }>(
+    `SELECT h.item, h.price::text, h.changed_at::text "on", u.name by FROM property_price_history h LEFT JOIN app_user u ON u.id=h.changed_by
+      WHERE h.property_id=$1 ORDER BY h.changed_at DESC, h.id DESC`, [propertyId])).rows.map((r) => ({ ...r, price: r.price === null ? null : Number(r.price) }));
+}
+
 const clean = (s: string | null | undefined) => (s ?? '').trim() || null;
 
 /** Replace the property's notes and prices as one unit. */
@@ -46,6 +61,10 @@ export async function saveSystemNotes(db: Db, propertyId: string, n: SystemNotes
        ON CONFLICT (property_id) DO UPDATE SET utilities=$2,system_brand=$3,system_id=$4,collector_location=$5,milestone_kind=$6,milestone_on=$7,tech_note=$8,transmitter_device=$9,meter_device=$10,equipment=$11,updated_by=$12,updated_at=now()`,
       [propertyId, JSON.stringify(n.utilities.filter((u) => u.utility || u.device)), clean(n.systemBrand), clean(n.systemId), clean(n.collectorLocation), n.milestoneKind || null, n.milestoneOn || null,
        clean(n.techNote), clean(n.transmitterDevice), clean(n.meterDevice), JSON.stringify(n.equipment.filter((e) => e.device.trim())), userId]);
+    // Keep a dated history of every price that changed, so a past quote or invoice can be explained.
+    const before = await getPropertyPrices(tx, propertyId);
+    for (const item of new Set([...Object.keys(before), ...Object.keys(prices)]))
+      if (before[item] !== prices[item]) await tx.query(`INSERT INTO property_price_history (property_id,item,price,changed_by) VALUES ($1,$2,$3,$4)`, [propertyId, item, prices[item] ?? null, userId]);
     await tx.query(`DELETE FROM property_price WHERE property_id=$1`, [propertyId]);
     for (const [item, price] of Object.entries(prices)) await tx.query(`INSERT INTO property_price (property_id,item,price) VALUES ($1,$2,$3)`, [propertyId, item, price]);
     await tx.query(`UPDATE property SET msa=$2 WHERE id=$1`, [propertyId, msa]);

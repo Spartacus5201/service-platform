@@ -32,6 +32,22 @@ export function checkRule(code: string, r: Rule): Rule {
 const canon = (r: Rule | undefined) => r ? JSON.stringify([r.component, r.method, ...[r.occupied, r.vacant].map((o) => [o.action, o.owner ?? null, o.reason])]) : 'null';
 export const sameRule = (a: Rule | undefined, b: Rule | undefined) => canon(a) === canon(b);
 
+/** The rules that were in force at the end of a date. */
+export async function rulesOn(q: Q, date: string): Promise<RuleTable> {
+  const rows = (await q.query<{ code: string; rule: Rule | null }>(
+    `SELECT DISTINCT ON (code) code, rule FROM audit_rule_version WHERE saved_at::date <= $1::date ORDER BY code, saved_at DESC, id DESC`, [date])).rows;
+  const out: RuleTable = { ...DEFAULT_RULES };
+  for (const r of rows) { if (r.rule) out[r.code] = r.rule; else if (DEFAULT_RULES[r.code]) out[r.code] = DEFAULT_RULES[r.code]; else delete out[r.code]; }
+  return out;
+}
+
+/** Dates on which rules were saved, newest first, with the codes changed. */
+export async function ruleHistory(q: Q) {
+  return (await q.query<{ on: string; codes: string[]; by: string | null }>(
+    `SELECT v.saved_at::date::text "on", array_agg(DISTINCT v.code ORDER BY v.code) codes, string_agg(DISTINCT u.name, ', ') by
+       FROM audit_rule_version v LEFT JOIN app_user u ON u.id=v.saved_by GROUP BY v.saved_at::date ORDER BY v.saved_at::date DESC`)).rows;
+}
+
 // ---------- drafts ----------
 export async function getDraft(q: Q, userId: string): Promise<RuleTable | null> {
   return (await q.query<{ rules: RuleTable }>(`SELECT rules FROM audit_rule_draft WHERE user_id=$1`, [userId])).rows[0]?.rules ?? null;
@@ -100,6 +116,8 @@ export async function saveRules(db: Db, userId: string, summary: Pick<RuleTest, 
     const changed = [...new Set([...Object.keys(current), ...Object.keys(draft)])].filter((c) => !sameRule(current[c], draft[c])).sort();
     for (const c of changed) {
       const r = draft[c];
+      // Every version is kept, so the rules in force on any date can be shown.
+      await tx.query(`INSERT INTO audit_rule_version (code, rule, saved_by) VALUES ($1,$2,$3)`, [c, r && !sameRule(DEFAULT_RULES[c], r) ? JSON.stringify(checkRule(c, r)) : null, userId]);
       if (!r) {
         if (DEFAULT_RULES[c]) throw new RuleError(`${c} is a built-in code and keeps a rule; set it to "Review manually" instead.`);
         await tx.query(`DELETE FROM audit_rule WHERE code=$1`, [c]);
