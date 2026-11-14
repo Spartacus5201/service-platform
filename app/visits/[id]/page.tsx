@@ -6,7 +6,6 @@ import { can, canOwn } from '@/src/auth/auth';
 import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
 import { aarForVisit, AAR_LABEL } from '@/src/service/aar';
-import { RESULT_LABEL } from '@/src/service/phrases';
 import { addPhotoAction, approveCloseoutAction, recordInvoiceRefAction, saveCloseoutAction, sendInvoiceSheetAction } from '../../server-actions/field';
 import type { ReactNode } from 'react';
 import { Badge, Flash, one, us, type SP, type Tone } from '../../ui';
@@ -69,7 +68,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
               {c.units.map((u) => (
                 <tr key={u.eventId}>
                   <td className="nowrap"><input type="hidden" name="event" value={u.eventId} /><a href={`/endpoints/${u.endpointId}`}>{u.building}-{u.unit}</a><div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td>
-                  <td>{u.issue}</td><td>{RESULT_LABEL[u.result]}</td>
+                  <td>{u.issue}</td><td>{u.resultLabel}</td>
                   <td className="small">{u.techNotes ?? '—'}</td>
                   <td style={{ minWidth: "24rem" }}><textarea name={`comment_${u.eventId}`} rows={4} defaultValue={clientText(u)} aria-label={`Client wording for ${u.building}-${u.unit}`} /></td>
                   <td style={{ minWidth: "14rem" }}><textarea name={`extra_${u.eventId}`} rows={3} defaultValue={u.extraComment ?? ''} aria-label="Additional comment" /></td>
@@ -81,7 +80,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         </form>)}
         {!canWording && <div className="tablewrap"><table>
           <thead><tr><th>Unit</th><th>Issue</th><th>Result</th><th>Notes</th></tr></thead>
-          <tbody>{c.units.map((u) => <tr key={u.eventId}><td className="nowrap">{u.building}-{u.unit}<div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td><td>{u.issue}</td><td>{RESULT_LABEL[u.result]}</td><td className="small">{u.techNotes ?? '—'}</td></tr>)}</tbody>
+          <tbody>{c.units.map((u) => <tr key={u.eventId}><td className="nowrap">{u.building}-{u.unit}<div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td><td>{u.issue}</td><td>{u.resultLabel}</td><td className="small">{u.techNotes ?? '—'}</td></tr>)}</tbody>
         </table></div>}
         <h3>Photos</h3>
         <div className="tablewrap"><table><tbody>

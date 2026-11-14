@@ -2,7 +2,6 @@
 import PDFDocument from 'pdfkit';
 import { asset, t, dateUs, money } from '../documents/pdf';
 import { clientText, type Closeout, type InvoiceSheet } from './closeout';
-import { RESULT_LABEL } from './phrases';
 
 const RED = '#c8102e'; const INK = '#1a1a1a'; const MUTED = '#5a5a5a'; const LINE = '#c9c9c9'; const SHADE = '#e6e6e6';
 
@@ -66,7 +65,7 @@ export async function renderNotesPdf(c: Closeout, photos: PhotoFile[] = []): Pro
   head();
   for (const u of c.units) {
     const comment = [clientText(u), u.extraComment].filter((x) => x && x.trim()).join(' ');
-    const cells = [u.building, u.unit, u.issue, RESULT_LABEL[u.result], u.startRead ?? '', u.endRead ?? '', u.newTxId ?? '', u.equipment, comment].map((x) => t(x));
+    const cells = [u.building, u.unit, u.issue, u.resultLabel, u.startRead ?? '', u.endRead ?? '', u.newTxId ?? '', u.equipment, comment].map((x) => t(x));
     doc.font('Helvetica').fontSize(7.5);
     const h = Math.max(...cells.map((x, i) => doc.heightOfString(x, { width: cols[i][1] - 4 }))) + 4;
     if (doc.y + h > bottom()) { doc.addPage(); head(); }

@@ -3,9 +3,13 @@ import { useActionState, useState } from 'react';
 import { recordVisitAction } from '../../server-actions/field';
 import type { FormState } from '../../types';
 
-export default function VisitForm({ endpointId, propertyId, today, isManual, catalog }: {
-  endpointId: string; propertyId: string; today: string; isManual: boolean; catalog: { id: string; name: string }[];
+type Pair = [string, string];
+export interface VisitChoices { outcomes: Pair[]; actions: Pair[]; issues: Pair[]; kinds: Pair[] }
+
+export default function VisitForm({ endpointId, propertyId, today, isManual, catalog, choices }: {
+  endpointId: string; propertyId: string; today: string; isManual: boolean; catalog: { id: string; name: string }[]; choices: VisitChoices;
 }) {
+  const opts = (xs: Pair[]) => xs.map(([v, t]) => <option key={v} value={v}>{t}</option>);
   const [st, action, pending] = useActionState<FormState, FormData>(recordVisitAction, {});
   const [act, setAct] = useState('inspect_test');
   const [outcome, setOutcome] = useState('completed');
@@ -18,17 +22,17 @@ export default function VisitForm({ endpointId, propertyId, today, isManual, cat
         <div className="field"><label htmlFor="technician">Technician</label><input id="technician" name="technician" /></div>
         <div className="field"><label htmlFor="outcome">Outcome</label>
           <select id="outcome" name="outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
-            <option value="completed">Completed</option><option value="unable_to_access">Unable to access</option><option value="unable_to_complete">Unable to complete</option>
+            {opts(choices.outcomes)}
           </select></div>
         <div className="field"><label htmlFor="action">Work done</label>
           <select id="action" name="action" value={act} onChange={(e) => setAct(e.target.value)} disabled={outcome !== 'completed'}>
-            <option value="inspect_test">Inspect / test</option><option value="repair">Repair</option><option value="replace">Replace a part</option><option value="reprogram">Reprogram</option><option value="other">Other</option>
+            {opts(choices.actions)}
           </select></div>
       </div>
       {outcome !== 'completed' && <p className="small">No work is recorded and no warranty clock starts for this outcome.</p>}
       <div className="row">
         <div className="field"><label htmlFor="issue_code">Issue</label>
-          <select id="issue_code" name="issue_code" defaultValue=""><option value="">(none)</option>{['NT', 'NI', 'INT', 'IDMM', 'LOW', 'HIGH', 'NEG', 'OTHER'].map((c) => <option key={c}>{c}</option>)}</select></div>
+          <select id="issue_code" name="issue_code" defaultValue=""><option value="">(none)</option>{choices.issues.filter(([c]) => c !== 'OK').map(([c, t]) => <option key={c} value={c}>{c} - {t}</option>)}</select></div>
         <div className="field"><label htmlFor="read_at_service">Read at service</label><input id="read_at_service" className="num" name="read_at_service" inputMode="decimal" /></div>
         <div className="field"><label htmlFor="salesforce_case">Salesforce Case</label><input id="salesforce_case" name="salesforce_case" /></div>
         <div className="field"><label htmlFor="salesforce_work_order">Work Order</label><input id="salesforce_work_order" name="salesforce_work_order" /></div>
@@ -38,7 +42,7 @@ export default function VisitForm({ endpointId, propertyId, today, isManual, cat
           <legend>Part replaced</legend>
           <div className="row">
             <div className="field"><label htmlFor="repl_kind">Part</label>
-              <select id="repl_kind" name="repl_kind" defaultValue={isManual ? 'meter' : 'transmitter'}><option value="transmitter">Transmitter</option><option value="meter">Meter</option><option value="combo">Combo (meter + transmitter)</option></select></div>
+              <select id="repl_kind" name="repl_kind" defaultValue={isManual ? 'meter' : 'transmitter'}>{opts(choices.kinds)}</select></div>
             <div className="field"><label htmlFor="new_hardware_id">New transmitter ID</label><input id="new_hardware_id" name="new_hardware_id" /></div>
             <div className="field"><label htmlFor="new_serial">New serial (optional)</label><input id="new_serial" name="new_serial" /></div>
             <div className="field"><label htmlFor="model">Model</label><input id="model" name="model" /></div>

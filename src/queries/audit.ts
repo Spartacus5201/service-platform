@@ -19,6 +19,8 @@ export interface AuditLine {
   unit: string;
   service: string;
   code: string;
+  /** The code the rules judged it as: the code itself, or the built-in code an added audit code works like. */
+  ruleCode: string;
   usage: number | null;
   readCount: number | null;
   occupied: boolean | null;
@@ -71,11 +73,15 @@ export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: s
   const low = new Map((await lowBatteryDevices(db, { endpointIds: [...new Set(rows.rows.map((r) => r.endpoint_id))] }))
     .filter((d) => d.endpointId).map((d) => [d.endpointId!, { since: d.firstLowOn, hardwareId: d.hardwareId, level: d.batteryLevel, model: d.model }]));
 
+  const { loadLists } = await import('../lists/lists');
+  const lists = await loadLists(db);
   return rows.rows.map((r) => {
     // Occupancy is unknown until an occupancy (or audit with ranges) import has run for the unit.
     const occupied = r.occupancy_as_of === null ? null : r.move_in_on !== null;
     const code = normalizeCode(r.audit_result);
-    const rules = recommend({ code, occupied, isManualRead: r.is_manual_read, readCount: r.read_count, lastRealOn: r.last_real_on, auditEndOn: r.read_date_2 }, audit);
+    // An added audit code (Admin > Lists) is judged as the built-in code it works like.
+    const ruleCode = lists.worksLike('audit_code', code) ?? code;
+    const rules = recommend({ code: ruleCode, occupied, isManualRead: r.is_manual_read, readCount: r.read_count, lastRealOn: r.last_real_on, auditEndOn: r.read_date_2 }, audit);
     const o = overrides.get(r.id);
     const rec: Recommendation = o
       ? { action: o.action, ...(o.owner ? { owner: o.owner } : {}), ...(o.component ? { component: o.component } : {}), reason: `Reviewer: ${o.reason}` }
@@ -85,7 +91,7 @@ export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: s
       endpointVisits: byEndpoint.get(r.endpoint_id) ?? [], visitDate: asOf, devicePartInstalledOn: partDate(installs.get(r.endpoint_id), rec.component, asOf),
     }, warranty);
     return {
-      readingId: r.id, endpointId: r.endpoint_id, building: r.building, unit: r.unit, service: r.service_code, code,
+      readingId: r.id, endpointId: r.endpoint_id, building: r.building, unit: r.unit, service: r.service_code, code, ruleCode,
       usage: r.usage === null ? null : Number(r.usage), readCount: r.read_count, occupied, isManual: r.is_manual_read,
       address: r.address, moveInOn: r.move_in_on, readDate1: r.read_date_1, readDate2: r.read_date_2, transmitterId: r.amr_id, miuid: r.vendor_label,
       recommendation: rec, rules, override: o ? { reason: o.reason, by: o.by, at: o.at } : null, coverage: cov,

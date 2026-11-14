@@ -7,12 +7,14 @@ import { endpointHistory } from '@/src/service/history';
 import { catalogItems } from '@/src/server/queries';
 import { Badge, Flash, warrantyTone, one, us, type SP } from '../../ui';
 import VisitForm from './visit-form';
+import { choices, loadLists } from '@/src/lists/lists';
 
 export default async function EndpointPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const s = await requireSession();
   const { id } = await params; const sp = await searchParams;
   if (!can(s, 'property.view')) notFound();
   const db = await getDb();
+  const lists = await loadLists(db);
   let h; try { h = await endpointHistory(db, id, today()); } catch { notFound(); }
   const e = h.endpoint;
   const prop = (await db.query<{ name: string }>(`SELECT name FROM property WHERE id=$1`, [e.propertyId])).rows[0];
@@ -58,7 +60,7 @@ export default async function EndpointPage({ params, searchParams }: { params: P
         ))}
         {!h.timeline.length && <li className="small">Nothing recorded yet.</li>}
       </ul>
-      {canOwn(s, 'visit.record') && <div style={{ marginTop: '1rem' }}><VisitForm endpointId={id} propertyId={e.propertyId} today={today()} isManual={e.isManual} catalog={catalog} /></div>}
+      {canOwn(s, 'visit.record') && <div style={{ marginTop: '1rem' }}><VisitForm endpointId={id} propertyId={e.propertyId} today={today()} isManual={e.isManual} catalog={catalog} choices={{ outcomes: choices(lists, 'visit_outcome'), actions: choices(lists, 'visit_action'), issues: choices(lists, 'audit_code'), kinds: choices(lists, 'part_kind') }} /></div>}
     </>
   );
 }

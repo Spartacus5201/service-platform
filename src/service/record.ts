@@ -34,6 +34,9 @@ export interface EventInput {
   readAtService?: number | null;
   endRead?: number | null;
   result?: Result | null;
+  /** An added list item that was picked (Admin > Lists); `action` / `result` hold the built-in it works like. */
+  actionItem?: string | null;
+  resultItem?: string | null;
   notes?: string | null;
   replacements?: Replacement[];
 }
@@ -104,10 +107,11 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
       const cov = coverageFor({ installedByUs: prop.installed_by_us, installCompletedOn: prop.install_completed_on }, prior, input.visitedOn, partInstalledOn, warranty);
 
       const ev = await one<{ id: string }>(tx,
-        `INSERT INTO service_event (visit_id,endpoint_id,action,issue_code,read_at_service,notes,created_by,labor_covered,part_covered,coverage_basis,result,end_read)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+        `INSERT INTO service_event (visit_id,endpoint_id,action,issue_code,read_at_service,notes,created_by,labor_covered,part_covered,coverage_basis,result,end_read,action_item,result_item)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
         [visitId, e.endpointId, e.action, e.issueCode ?? null, e.readAtService ?? null, e.notes ?? null, input.createdBy ?? null,
-         touched && cov.laborCovered, touched && e.action === 'replace' && cov.partCovered, cov.basis, e.result ?? null, e.endRead ?? null]);
+         touched && cov.laborCovered, touched && e.action === 'replace' && cov.partCovered, cov.basis, e.result ?? null, e.endRead ?? null,
+         e.actionItem ?? null, e.result ? e.resultItem ?? null : null]);
       eventIds.push(ev!.id);
 
       for (const [i, r] of (e.replacements ?? []).entries()) {
@@ -167,7 +171,7 @@ async function applyReplacement(q: Q, v: VisitInput, e: EventInput, eventId: str
     [eventId, r.catalogItemId ?? null, old?.id ?? null, dev!.id, r.quantity ?? 1]);
 }
 
-export interface EventPatch { issueCode?: string | null; notes?: string | null; readAtService?: number | null; endRead?: number | null; result?: Result | null; action?: Exclude<Action, 'replace'> }
+export interface EventPatch { issueCode?: string | null; notes?: string | null; readAtService?: number | null; endRead?: number | null; result?: Result | null; action?: Exclude<Action, 'replace'>; actionItem?: string | null; resultItem?: string | null }
 
 /** Correct an event without losing the original. Refused once invoiced, and for replace events (their parts moved devices). */
 export async function correctEvent(db: Db, eventId: string, patch: EventPatch, userId?: string | null, reason?: string | null): Promise<string> {
@@ -176,7 +180,7 @@ export async function correctEvent(db: Db, eventId: string, patch: EventPatch, u
 }
 
 export async function correctEventIn(db: Q, eventId: string, patch: EventPatch, userId?: string | null, reason?: string | null): Promise<string> {
-  const ev = await one<{ id: string; visit_id: string; endpoint_id: string; action: Action; issue_code: string | null; read_at_service: string | null; notes: string | null; result: Result | null; end_read: string | null;
+  const ev = await one<{ id: string; visit_id: string; endpoint_id: string; action: Action; issue_code: string | null; read_at_service: string | null; notes: string | null; result: Result | null; end_read: string | null; action_item: string | null; result_item: string | null;
     labor_covered: boolean; part_covered: boolean; coverage_basis: string[]; live: boolean }>(db,
     `SELECT se.*, ${LIVE_EVENT} AS live FROM service_event se WHERE se.id=$1`, [eventId]);
   if (!ev) throw new ServiceError('Unknown event.');
@@ -185,14 +189,15 @@ export async function correctEventIn(db: Q, eventId: string, patch: EventPatch, 
   const inv = await one(db, `SELECT 1 FROM invoice_line WHERE service_event_id=$1`, [eventId]);
   if (inv) throw new ServiceError('This event has been invoiced and can no longer be corrected.');
   const next = await one<{ id: string }>(db,
-    `INSERT INTO service_event (visit_id,endpoint_id,action,issue_code,read_at_service,notes,supersedes,created_by,labor_covered,part_covered,coverage_basis,result,end_read)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+    `INSERT INTO service_event (visit_id,endpoint_id,action,issue_code,read_at_service,notes,supersedes,created_by,labor_covered,part_covered,coverage_basis,result,end_read,action_item,result_item)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
     [ev.visit_id, ev.endpoint_id, patch.action ?? ev.action,
      'issueCode' in patch ? patch.issueCode : ev.issue_code,
      'readAtService' in patch ? patch.readAtService : ev.read_at_service,
      'notes' in patch ? patch.notes : ev.notes,
      ev.id, userId ?? null, ev.labor_covered, ev.part_covered, ev.coverage_basis,
-     'result' in patch ? patch.result : ev.result, 'endRead' in patch ? patch.endRead : ev.end_read]);
+     'result' in patch ? patch.result : ev.result, 'endRead' in patch ? patch.endRead : ev.end_read,
+     'action' in patch ? patch.actionItem ?? null : ev.action_item, 'result' in patch ? patch.resultItem ?? null : ev.result_item]);
   // The client wording follows the event it describes.
   await db.query(`INSERT INTO event_note (service_event_id,client_comment,extra_comment,updated_by) SELECT $2, client_comment, extra_comment, $3 FROM event_note WHERE service_event_id=$1`, [ev.id, next!.id, userId ?? null]);
   await db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'event_corrected','service_event',$2,$3)`,

@@ -1,5 +1,5 @@
 'use server';
-import { JOB_SOURCES } from '@/src/jobs/jobs';
+import { loadLists } from '@/src/lists/lists';
 
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
@@ -12,8 +12,8 @@ import { withError, withMsg } from '../ui';
 import { s, oneOf, isRedirect } from './form';
 
 // ---------- jobs ----------
-const jobFields = (fd: FormData) => ({
-  title: s(fd, 'title') ?? '', source: oneOf(fd, 'source', JOB_SOURCES) ?? 'other', requestedOn: s(fd, 'requested_on') ?? today(),
+const jobFields = async (fd: FormData) => ({
+  title: s(fd, 'title') ?? '', source: (await loadLists(await getDb())).get('job_source', s(fd, 'source'))?.code ?? 'other', requestedOn: s(fd, 'requested_on') ?? today(),
   requestedBy: s(fd, 'requested_by'), requestNotes: s(fd, 'request_notes'), salesforceCase: s(fd, 'salesforce_case'), salesforceStatus: s(fd, 'salesforce_status'),
 });
 export async function createJobAction(fd: FormData) {
@@ -21,7 +21,7 @@ export async function createJobAction(fd: FormData) {
   const propertyId = s(fd, 'property_id')!;
   let id: string;
   const db = await getDb();
-  try { id = await createJob(db, { propertyId, ...jobFields(fd), createdBy: sess.userId }); }
+  try { id = await createJob(db, { propertyId, ...(await jobFields(fd)), createdBy: sess.userId }); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/properties/${propertyId}?tab=work`, e.message)); throw e; }
   // Fill the status from Salesforce when a case was given and lookups are on; a failure here is not a reason to lose the job.
   try { const client = salesforce(); if (client && s(fd, 'salesforce_case')) await refreshFromSalesforce(db, id, client); } catch { /* status stays as typed */ }
@@ -30,7 +30,7 @@ export async function createJobAction(fd: FormData) {
 export async function updateJobAction(fd: FormData) {
   await requireCan('job.manage');
   const id = s(fd, 'job_id')!;
-  try { await updateJob(await getDb(), id, jobFields(fd)); }
+  try { await updateJob(await getDb(), id, await jobFields(fd)); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Saved.'));
 }

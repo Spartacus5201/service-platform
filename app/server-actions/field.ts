@@ -1,7 +1,8 @@
 'use server';
 import { can } from '@/src/auth/auth';
 import { isOwnVisit } from '@/src/jobs/own';
-import { ACTIONS, OUTCOMES, RESULTS, PART_KINDS } from '@/src/service/record';
+import { OUTCOMES, PART_KINDS } from '@/src/service/record';
+import { loadLists, type Lists } from '@/src/lists/lists';
 
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
@@ -18,20 +19,27 @@ import type { FormState } from '../types';
 import { withError, withMsg } from '../ui';
 import { s, oneOf, n, msgOf, isRedirect, domainError } from './form';
 
+/** The action and result picked on a form, checked against the lists (an added item is stored with the built-in it works like). */
+function picks(lists: Lists, fd: FormData, actionField: string, resultField: string) {
+  const a = lists.pick('visit_action', fd.get(actionField)); const r = lists.pick('visit_result', fd.get(resultField));
+  return { action: (a?.code ?? 'inspect_test') as Action, actionItem: a?.item ?? null, result: (r?.code ?? null) as Result | null, resultItem: r?.item ?? null };
+}
+
 // ---------- service ----------
 export async function recordVisitAction(_: FormState, fd: FormData): Promise<FormState> {
   const sess = await requireCanOwn('visit.record');
   const endpointId = s(fd, 'endpoint_id')!; const propertyId = s(fd, 'property_id')!;
-  const action = oneOf(fd, 'action', ACTIONS) ?? 'inspect_test';
   const replKind = oneOf(fd, 'repl_kind', PART_KINDS);
   try {
-    await recordVisit(await getDb(), {
+    const db = await getDb();
+    const { action, actionItem, result, resultItem } = picks(await loadLists(db), fd, 'action', 'result');
+    await recordVisit(db, {
       // Someone who may record only their own visits is the technician on it.
       ...(can(sess, 'visit.record') ? { technician: s(fd, 'technician') } : { technician: s(fd, 'technician') ?? sess.name, technicianId: sess.userId }),
       propertyId, visitedOn: s(fd, 'visited_on') ?? today(), outcome: oneOf(fd, 'outcome', OUTCOMES) ?? 'completed',
       salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId,
       events: [{
-        endpointId, action, issueCode: s(fd, 'issue_code'), readAtService: n(fd, 'read_at_service'), notes: s(fd, 'notes'),
+        endpointId, action, actionItem, result: result ?? undefined, resultItem, issueCode: s(fd, 'issue_code'), readAtService: n(fd, 'read_at_service'), notes: s(fd, 'notes'),
         replacements: action === 'replace' && replKind ? [{ kind: replKind, newHardwareId: s(fd, 'new_hardware_id'), newSerial: s(fd, 'new_serial'), model: s(fd, 'model'), catalogItemId: s(fd, 'catalog_item_id') }] : undefined,
       }],
     });
@@ -62,10 +70,11 @@ export async function createCloseoutAction(fd: FormData) {
   const propertyId = s(fd, 'property_id')!;
   const back = `/properties/${propertyId}/closeout/new`;
   const rows = fd.getAll('row').map(String);
+  const lists = await loadLists(await getDb());
   const events = rows.filter((i) => fd.get(`include_${i}`) === 'on').map((i) => {
-    const action = oneOf(fd, `action_${i}`, ACTIONS) ?? 'inspect_test';
+    const { action, actionItem, result, resultItem } = picks(lists, fd, `action_${i}`, `result_${i}`);
     const kind = oneOf(fd, `kind_${i}`, PART_KINDS);
-    return { endpointId: s(fd, `endpoint_${i}`)!, action, issueCode: s(fd, `issue_${i}`), result: oneOf(fd, `result_${i}`, RESULTS) ?? undefined,
+    return { endpointId: s(fd, `endpoint_${i}`)!, action, actionItem, issueCode: s(fd, `issue_${i}`), result: result ?? undefined, resultItem,
       readAtService: n(fd, `start_${i}`), endRead: n(fd, `end_${i}`), notes: s(fd, `notes_${i}`),
       replacements: action === 'replace' && kind ? [{ kind, newHardwareId: s(fd, `newtx_${i}`) }] : undefined };
   });
@@ -136,6 +145,7 @@ export async function correctVisitAction(fd: FormData) {
     const ops: CorrectionOp[] = [];
     if (vp.visitedOn !== v.visitedOn || vp.technician !== v.technician || vp.outcome !== v.outcome || vp.salesforceCase !== v.salesforceCase || vp.salesforceWorkOrder !== v.salesforceWorkOrder || vp.notes !== v.notes || vp.documentId !== v.documentId)
       ops.push({ kind: 'visit', patch: vp });
+    const lists = await loadLists(db);
     const locked = new Set((await db.query<{ service_event_id: string }>(`SELECT il.service_event_id FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows.map((r) => r.service_event_id));
     for (const u of c.units) {
       const e = u.eventId; const label = `${u.building}-${u.unit}`;
@@ -146,9 +156,12 @@ export async function correctVisitAction(fd: FormData) {
         if (tx && tx !== u.newTxId) ops.push({ kind: 'partId', eventId: e, newHardwareId: tx, label });
         continue;
       }
-      const patch = { action: (oneOf(fd, `action_${e}`, ACTIONS.filter((a) => a !== 'replace')) ?? u.action) as Exclude<Action, 'replace'>, issueCode: s(fd, `issue_${e}`), result: oneOf(fd, `result_${e}`, RESULTS),
+      const a = lists.pick('visit_action', fd.get(`action_${e}`)); const r = lists.pick('visit_result', fd.get(`result_${e}`));
+      const keepAction = !a || a.code === 'replace';
+      const patch = { action: (keepAction ? u.action : a.code) as Exclude<Action, 'replace'>, actionItem: keepAction ? u.actionItem : a.item,
+        issueCode: s(fd, `issue_${e}`), result: (r?.code ?? null) as Result | null, resultItem: r?.item ?? null,
         readAtService: n(fd, `start_${e}`), endRead: n(fd, `end_${e}`), notes: s(fd, `notes_${e}`) };
-      const same = patch.action === u.action && patch.issueCode === u.issueCode && (patch.result ?? u.result) === u.result && patch.readAtService === u.startRead && patch.endRead === u.endRead && patch.notes === u.techNotes;
+      const same = patch.action === u.action && patch.actionItem === u.actionItem && patch.issueCode === u.issueCode && (patch.result ?? u.result) === u.result && (r ? patch.resultItem === u.resultItem : true) && patch.readAtService === u.startRead && patch.endRead === u.endRead && patch.notes === u.techNotes;
       if (!same) ops.push({ kind: 'event', eventId: e, patch, label });
     }
     if (!ops.length) redirect(withError(back, 'Nothing was changed.'));

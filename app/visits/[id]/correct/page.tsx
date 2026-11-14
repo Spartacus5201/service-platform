@@ -5,14 +5,14 @@ import { closeoutData } from '@/src/service/closeout';
 import { correctVisitAction } from '../../../server-actions/field';
 import { Flash, one, type SP } from '../../../ui';
 
-const ACTIONS = [['inspect_test', 'Inspect / test'], ['repair', 'Repair'], ['reprogram', 'Reprogram'], ['other', 'Other']];
-const RESULTS = [['repaired', 'Repaired'], ['replaced', 'Replaced'], ['reprogrammed', 'Reprogrammed'], ['no_fault_found', 'No fault found'], ['unable_to_access', 'Unable to access'], ['unable_to_complete', 'Unable to complete'], ['other', 'Other']];
+import { choices, loadLists } from '@/src/lists/lists';
 
 export default async function CorrectVisit({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   await requireCan('service.correct');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();
+  const lists = await loadLists(db);
   const invoiced = new Set((await db.query<{ service_event_id: string }>(`SELECT il.service_event_id FROM invoice_line il JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows.map((r) => r.service_event_id));
   const v = c.visit;
   const docs = (await db.query<{ id: string; number: string; type: string }>(`SELECT id, number, type FROM document WHERE property_id=$1 AND type IN ('WA','Proposal') ORDER BY created_on DESC`, [c.property.id])).rows;
@@ -29,7 +29,7 @@ export default async function CorrectVisit({ params, searchParams }: { params: P
           <div className="field"><label htmlFor="visited_on">Service date</label><input id="visited_on" name="visited_on" type="date" defaultValue={v.visitedOn} required /></div>
           <div className="field"><label htmlFor="technician">Technician</label><input id="technician" name="technician" defaultValue={v.technician ?? ''} /></div>
           <div className="field"><label htmlFor="outcome">Outcome</label>
-            <select id="outcome" name="outcome" defaultValue={v.outcome}><option value="completed">Completed</option><option value="unable_to_access">Unable to access</option><option value="unable_to_complete">Unable to complete</option></select></div>
+            <select id="outcome" name="outcome" defaultValue={v.outcome}>{choices(lists, 'visit_outcome', { keep: v.outcome }).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
           <div className="field"><label htmlFor="salesforce_case">Salesforce case</label><input id="salesforce_case" name="salesforce_case" defaultValue={v.salesforceCase ?? ''} /></div>
           <div className="field"><label htmlFor="salesforce_work_order">Work order</label><input id="salesforce_work_order" name="salesforce_work_order" defaultValue={v.salesforceWorkOrder ?? ''} /></div>
           <div className="field"><label htmlFor="document_id">Work authorization</label><select id="document_id" name="document_id" defaultValue={v.documentId ?? ''}><option value="">None</option>{docs.map((d) => <option key={d.id} value={d.id}>{d.type} {d.number}</option>)}</select></div>
@@ -45,9 +45,9 @@ export default async function CorrectVisit({ params, searchParams }: { params: P
               return (
                 <tr key={u.eventId} className={locked ? 'muted' : ''}>
                   <td className="nowrap">{u.building}-{u.unit}{locked && <div className="small">invoiced</div>}</td>
-                  <td>{isReplace ? 'Replace' : <select name={`action_${u.eventId}`} defaultValue={u.action} disabled={locked} aria-label="Action">{ACTIONS.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
+                  <td>{isReplace ? 'Replace' : <select name={`action_${u.eventId}`} defaultValue={u.actionItem ?? u.action} disabled={locked} aria-label="Action">{choices(lists, 'visit_action', { keep: u.actionItem ?? u.action, except: ['replace'] }).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
                   <td>{isReplace ? u.issueCode ?? '' : <input name={`issue_${u.eventId}`} defaultValue={u.issueCode ?? ''} disabled={locked} size={6} aria-label="Issue code" />}</td>
-                  <td>{isReplace ? u.result : <select name={`result_${u.eventId}`} defaultValue={u.result} disabled={locked} aria-label="Result">{RESULTS.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
+                  <td>{isReplace ? u.resultLabel : <select name={`result_${u.eventId}`} defaultValue={u.resultItem ?? u.result} disabled={locked} aria-label="Result">{choices(lists, 'visit_result', { keep: u.resultItem ?? u.result }).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
                   <td>{isReplace ? u.startRead ?? '' : <input className="num" name={`start_${u.eventId}`} defaultValue={u.startRead ?? ''} disabled={locked} aria-label="Start read" />}</td>
                   <td>{isReplace ? u.endRead ?? '' : <input className="num" name={`end_${u.eventId}`} defaultValue={u.endRead ?? ''} disabled={locked} aria-label="End read" />}</td>
                   <td>{isReplace ? <input name={`newtx_${u.eventId}`} defaultValue={u.newTxId ?? ''} aria-label="New transmitter ID" /> : '—'}</td>

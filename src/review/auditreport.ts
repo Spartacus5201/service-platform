@@ -58,8 +58,8 @@ export function auditCounts(lines: AuditLine[]) {
   const act = lines.filter((l) => l.recommendation.action !== 'No action');
   const n = (f: (l: AuditLine) => boolean) => act.filter(f).length;
   return { issues: act.length, ni: n((l) => l.code === 'NI'), nt: n((l) => l.code === 'NT'), int: n((l) => l.code === 'INT'),
-    usage: n((l) => ['HIGH', 'LOW', 'NEG'].includes(l.code)),
-    other: n((l) => !['NI', 'NT', 'INT', 'HIGH', 'LOW', 'NEG'].includes(l.code) || l.recommendation.action === 'Requested by property') };
+    usage: n((l) => ['HIGH', 'LOW', 'NEG'].includes(l.ruleCode)),
+    other: n((l) => !['NI', 'NT', 'INT', 'HIGH', 'LOW', 'NEG'].includes(l.ruleCode) || l.recommendation.action === 'Requested by property') };
 }
 
 function noteFor(l: AuditLine): string {

@@ -6,7 +6,6 @@ import { UserError } from '../errors';
 import type { Db, Q } from '../db';
 import { closeoutData, type Closeout } from './closeout';
 import { verifyVisit } from './verify';
-import { RESULT_LABEL } from './phrases';
 import { setting, SETTING_DEFAULTS } from '../settings';
 
 export type AarOutcome = 'fixed' | 'still_failing' | 'new_problem' | 'revisit' | 'awaiting_audit';
@@ -64,7 +63,7 @@ async function visitRows(db: Db, visitId: string): Promise<{ c: Closeout; rows: 
     rows.push({
       visitId, visitedOn: c.visit.visitedOn, eventId: u.eventId, endpointId: u.endpointId, building: u.building, unit: u.unit, service: u.service,
       before: { code: beforeCode, auditEnded: b?.ended ?? null },
-      work: [RESULT_LABEL[u.result], u.equipment && u.equipment !== '-' ? u.equipment : null].filter(Boolean).join(': '), newTxId: u.newTxId,
+      work: [u.resultLabel, u.equipment && u.equipment !== '-' ? u.equipment : null].filter(Boolean).join(': '), newTxId: u.newTxId,
       after: { code: a, evidence: v?.evidence ?? 'No audit or check-in since the visit yet.', on: v?.on ?? null }, outcome,
     });
   }

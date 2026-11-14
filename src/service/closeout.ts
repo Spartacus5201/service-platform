@@ -3,7 +3,8 @@
 import { UserError } from '../errors';
 import type { Db, Q } from '../db';
 import { LIVE_EVENT, type Result, type Outcome } from './record';
-import { defaultResult, issueLabel, suggestComment } from './phrases';
+import { defaultResult, issueLabel, resultLabel, suggestComment } from './phrases';
+import { loadLists, BUILTIN_LISTS, type Lists } from '../lists/lists';
 import { invoicingFor, laborRate, CHARGE_CODES, WORK_LABEL, type ChargeCode } from '../documents/build';
 import { getPropertyPrices } from '../documents/systemnotes';
 import { propertyPartPrice } from '../documents/pricing';
@@ -16,7 +17,7 @@ export class CloseoutError extends UserError {}
 export interface CloseoutUnit {
   eventId: string; endpointId: string;
   building: string; unit: string; address: string | null; service: string;
-  issueCode: string | null; issue: string; result: Result; resultLabel?: string;
+  issueCode: string | null; issue: string; result: Result; resultItem: string | null; resultLabel: string; actionItem: string | null; actionLabel: string;
   startRead: number | null; endRead: number | null; newTxId: string | null; equipment: string;
   techNotes: string | null; suggested: string; clientComment: string | null; extraComment: string | null;
   action: string; laborCovered: boolean; partCovered: boolean;
@@ -32,10 +33,10 @@ export interface Closeout {
   photos: { id: string; endpointId: string | null; filename: string; caption: string | null; includeInClient: boolean }[];
 }
 
-export function countIssues(units: { issueCode: string | null }[]) {
+export function countIssues(units: { issueCode: string | null }[], lists: Lists = BUILTIN_LISTS) {
   const c = { NI: 0, NT: 0, INT: 0, HIGHLOW: 0, other: 0, total: units.length };
   for (const u of units) {
-    const k = (u.issueCode ?? '').toUpperCase();
+    const k = lists.worksLike('audit_code', u.issueCode) ?? (u.issueCode ?? '').toUpperCase();
     if (k === 'NI') c.NI++; else if (k === 'NT') c.NT++; else if (k === 'INT') c.INT++; else if (['HIGH', 'LOW', 'NEG'].includes(k)) c.HIGHLOW++; else c.other++;
   }
   return c;
@@ -57,9 +58,9 @@ export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
   const inv = await invoicingFor(db, v.property_id, v.visited_on);
 
   const ev = await db.query<{ id: string; endpoint_id: string; building: string; unit: string; address: string | null; service_code: string; action: string; issue_code: string | null;
-    result: Result | null; read_at_service: string | null; end_read: string | null; notes: string | null; labor_covered: boolean; part_covered: boolean;
+    result: Result | null; action_item: string | null; result_item: string | null; read_at_service: string | null; end_read: string | null; notes: string | null; labor_covered: boolean; part_covered: boolean;
     client_comment: string | null; extra_comment: string | null }>(
-    `SELECT se.id, se.endpoint_id, b.label building, u.current_label unit, u.service_address address, e.service_code, se.action, se.issue_code, se.result,
+    `SELECT se.id, se.endpoint_id, b.label building, u.current_label unit, u.service_address address, e.service_code, se.action, se.issue_code, se.result, se.action_item, se.result_item,
             se.read_at_service::text, se.end_read::text, se.notes, se.labor_covered, se.part_covered, n.client_comment, n.extra_comment
        FROM service_event se JOIN endpoint e ON e.id=se.endpoint_id JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id
        LEFT JOIN event_note n ON n.service_event_id=se.id
@@ -70,17 +71,19 @@ export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
        FROM event_part ep JOIN device d ON d.id=ep.new_device_id LEFT JOIN catalog_item c ON c.id=ep.catalog_item_id
       WHERE ep.service_event_id = ANY($1::uuid[])`, [ev.rows.map((x) => x.id)]);
 
+  const lists = await loadLists(db);
   const units: CloseoutUnit[] = ev.rows.map((e) => {
     const ps = parts.rows.filter((x) => x.service_event_id === e.id);
     const result = e.result ?? defaultResult(e.action as never, v.outcome);
     const tx = ps.find((x) => x.kind !== 'meter' && x.hardware_id)?.hardware_id ?? null;
     return {
       eventId: e.id, endpointId: e.endpoint_id, building: e.building, unit: e.unit, address: e.address, service: e.service_code,
-      issueCode: e.issue_code, issue: issueLabel(e.issue_code), result,
+      issueCode: e.issue_code, issue: issueLabel(e.issue_code, lists), result,
+      resultItem: e.result_item, resultLabel: resultLabel(result, e.result_item, lists), actionItem: e.action_item, actionLabel: lists.label('visit_action', e.action_item ?? e.action),
       startRead: num(e.read_at_service), endRead: num(e.end_read), newTxId: tx,
       equipment: ps.map((x) => `${Number(x.quantity) === 1 ? '' : `${x.quantity} x `}${x.name ?? x.model ?? x.kind}`).join('; '),
       techNotes: e.notes, action: e.action, laborCovered: e.labor_covered, partCovered: e.part_covered,
-      suggested: suggestComment({ issueCode: e.issue_code, result, newTxId: tx, replacedKinds: ps.map((x) => x.kind), startRead: num(e.read_at_service), endRead: num(e.end_read) }),
+      suggested: suggestComment({ issueCode: e.issue_code, result, resultItem: e.result_item, newTxId: tx, replacedKinds: ps.map((x) => x.kind), startRead: num(e.read_at_service), endRead: num(e.end_read) }, lists),
       clientComment: e.client_comment, extraComment: e.extra_comment,
     };
   });
@@ -92,7 +95,7 @@ export async function closeoutData(db: Q, visitId: string): Promise<Closeout> {
       salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, documentNumber: v.doc_number, documentId: v.document_id, notes: v.notes },
     property: { id: p.id, name: p.name, classId: p.class_id, address: p.address, city: p.city, state: p.state, zip: p.zip },
     contact: { name: c?.name ?? null, phone: c?.phone ?? null, email: c?.email ?? null },
-    code: inv.code, chargeCode: inv.chargeCode, units, counts: countIssues(units), photos,
+    code: inv.code, chargeCode: inv.chargeCode, units, counts: countIssues(units, lists), photos,
   };
 }
 
@@ -182,7 +185,7 @@ export async function invoiceSheet(db: Db, visitId: string): Promise<InvoiceShee
     items.push({ eventId: u.eventId, laborAmount: labor, partAmounts });
   }
   const groups = groupWork(lines);
-  return { closeout: c, workAuthorization: c.visit.documentNumber, chargeLabel: CHARGE_CODES[c.chargeCode], groups,
+  return { closeout: c, workAuthorization: c.visit.documentNumber, chargeLabel: (await loadLists(db)).label('charge_code', c.chargeCode), groups,
     total: Math.round(groups.reduce((s, g) => s + g.total, 0) * 100) / 100, warnings, items };
 }
 

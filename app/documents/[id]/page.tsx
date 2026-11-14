@@ -3,7 +3,8 @@ import { getDb } from '@/src/server/db';
 import { requireSession } from '@/src/server/session';
 import { today } from '@/src/server/dates';
 import { can } from '@/src/auth/auth';
-import { CHARGE_CODES, laborRate, quoteStatus } from '@/src/documents/build';
+import { laborRate, quoteStatus } from '@/src/documents/build';
+import { choices, loadLists } from '@/src/lists/lists';
 import { documentTotal, renderDocumentHtml, type FrozenContent } from '@/src/documents/render';
 import { catalogItems } from '@/src/server/queries';
 import { newVersionAction, reconfirmAction, saveLinesAction } from '../../server-actions/documents';
@@ -69,7 +70,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
           <div className="card">
             <div className="row">
               <div className="field" style={{ flex: 2 }}><label htmlFor="title">Project name</label><input id="title" name="title" defaultValue={d.title ?? ''} /></div>
-              <div className="field"><label htmlFor="charge_code">Charge code</label><select id="charge_code" name="charge_code" defaultValue={d.charge_code ?? '20'}>{Object.entries(CHARGE_CODES).map(([k, v]) => <option key={k} value={k}>{k} - {v}</option>)}</select></div>
+              <div className="field"><label htmlFor="charge_code">Charge code</label><select id="charge_code" name="charge_code" defaultValue={d.charge_code ?? '20'}>{choices(await loadLists(db), 'charge_code').map(([k, v]) => <option key={k} value={k}>{k} - {v}</option>)}</select></div>
               <div className="field"><label htmlFor="salesforce_case">Salesforce Case</label><input id="salesforce_case" name="salesforce_case" defaultValue={d.salesforce_case ?? ''} /></div>
               <div className="field"><label htmlFor="salesforce_work_order">Work Order</label><input id="salesforce_work_order" name="salesforce_work_order" defaultValue={d.salesforce_work_order ?? ''} /></div>
             </div>

@@ -130,7 +130,7 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
           const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
           part = bat.price; itemId = bat.itemId; component = 'battery';
         }
-        let label = workLabel(l.code, l.recommendation);
+        let label = workLabel(l.ruleCode, l.recommendation);
         // The equipment registry knows the installed model: quote its replacement part (or its successor's, when obsolete).
         if (l.recommendation.action === 'Needs Service' && (component === 'transmitter' || component === 'meter')) {
           const rep = await replacementFor(tx, l.endpointId, component, input.createdOn);

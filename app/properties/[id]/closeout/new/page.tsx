@@ -8,14 +8,16 @@ import { auditLines, needsAction } from '@/src/queries/audit';
 import { createCloseoutAction } from '../../../../server-actions/field';
 import { Flash, one, type SP } from '../../../../ui';
 
-const ACTIONS = [['inspect_test', 'Inspect / test'], ['repair', 'Repair'], ['replace', 'Replace'], ['reprogram', 'Reprogram'], ['other', 'Other']];
-const RESULTS = [['', '(from action)'], ['repaired', 'Repaired'], ['replaced', 'Replaced'], ['reprogrammed', 'Reprogrammed'], ['no_fault_found', 'No fault found'], ['unable_to_access', 'Unable to access'], ['unable_to_complete', 'Unable to complete'], ['other', 'Other']];
+import { choices, loadLists } from '@/src/lists/lists';
 
 export default async function NewCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   await requireCan('visit.record');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const p = await getProperty(db, id); if (!p) notFound();
+  const lists = await loadLists(db);
+  const ACTIONS = choices(lists, 'visit_action');
+  const RESULTS: [string, string][] = [['', '(from action)'], ...choices(lists, 'visit_result')];
   const batch = (await db.query<{ id: string; imported_at: string }>(
     `SELECT id, imported_at::text FROM import_batch WHERE property_id=$1 AND kind IN ('auto_audit','manual_audit') ORDER BY imported_at DESC LIMIT 1`, [id])).rows[0];
   const lines = batch ? needsAction(await auditLines(db, batch.id, today())) : [];

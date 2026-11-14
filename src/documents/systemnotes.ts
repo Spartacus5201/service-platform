@@ -2,15 +2,13 @@
 import { UserError } from '../errors';
 import type { Db, Q } from '../db';
 
-export const BRANDS = ['Aclara', 'Byram', 'Inovonics', 'Itron', 'NextCentury', 'SpeedRead', 'Stealth', 'Tehama'];
-export const MILESTONES = ['Install Complete', 'Takeover', 'Upgraded'] as const;
-export const UTILITIES = ['Water', 'Cold', 'Hot', 'Electric', 'Gas', 'HVAC', 'Remote Reader', 'RTM', 'Transmitter'];
-export const PRICE_ITEMS = ['Labor', 'AMR Labor', 'Meter', 'Cold Meter', 'Hot Meter', 'EL Meter', 'GS Meter', 'HV Meter', 'Transmitter', 'ETR', 'Collector', 'Converter', 'Receiver', 'Remote Reader', 'Repeater', 'Reed Switch'];
+import { loadLists } from '../lists/lists';
+// Brands, utilities, milestones and price items are editable lists (Admin > Lists).
 
 export interface SystemNotes {
   utilities: { utility: string; device: string }[];
   systemBrand: string | null; systemId: string | null; collectorLocation: string | null;
-  milestoneKind: (typeof MILESTONES)[number] | null; milestoneOn: string | null;
+  milestoneKind: string | null; milestoneOn: string | null;
   techNote: string | null; transmitterDevice: string | null; meterDevice: string | null;
   equipment: { qty: number; device: string }[];
 }
@@ -36,7 +34,10 @@ const clean = (s: string | null | undefined) => (s ?? '').trim() || null;
 
 /** Replace the property's notes and prices as one unit. */
 export async function saveSystemNotes(db: Db, propertyId: string, n: SystemNotes, prices: PropertyPrices, msa: boolean, userId: string | null): Promise<void> {
-  for (const [item, p] of Object.entries(prices)) if (!PRICE_ITEMS.includes(item) || !Number.isFinite(p) || p < 0 || Math.round(p * 100) !== p * 100) throw new UserError(`Price for "${item}" must be a dollar amount.`);
+  const lists = await loadLists(db);
+  const items = lists.items('price_item', { includeRetired: true }).map((i) => i.code);   // a retired item keeps the price it has
+  if (n.milestoneKind && !lists.items('milestone', { includeRetired: true }).some((i) => i.code === n.milestoneKind)) throw new UserError(`"${n.milestoneKind}" is not on the milestone list.`);
+  for (const [item, p] of Object.entries(prices)) if (!items.includes(item) || !Number.isFinite(p) || p < 0 || Math.round(p * 100) !== p * 100) throw new UserError(`Price for "${item}" must be a dollar amount.`);
   for (const e of n.equipment) if (!Number.isInteger(e.qty) || e.qty < 1) throw new UserError('Equipment quantities must be whole numbers of 1 or more.');
   await db.transaction(async (tx) => {
     await tx.query(

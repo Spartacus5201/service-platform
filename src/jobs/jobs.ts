@@ -11,9 +11,8 @@ import { totals } from '../documents/layout';
 
 export class JobError extends UserError {}
 
-export const JOB_SOURCES = ['salesforce', 'phone', 'email', 'audit', 'other'] as const;
-export type JobSource = (typeof JOB_SOURCES)[number];
-export const SOURCE_LABEL: Record<JobSource, string> = { salesforce: 'Salesforce case', phone: 'Phone', email: 'Email', audit: 'Audit', other: 'Other' };
+/** How a job came in: a code on the job sources list (Admin > Lists). */
+export type JobSource = string;
 
 export type JobStage = 'requested' | 'audited' | 'drafting' | 'quoted' | 'serviced' | 'to_invoice' | 'follow_up' | 'verifying' | 'ready' | 'closed';
 export const STAGES: JobStage[] = ['requested', 'audited', 'drafting', 'quoted', 'serviced', 'to_invoice', 'follow_up', 'verifying', 'ready', 'closed'];
@@ -108,7 +107,8 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
     `SELECT j.id, j.number, j.property_id, p.name, p.class_id, j.title, j.source, j.requested_on::text, j.requested_by, j.request_notes, j.salesforce_case, j.salesforce_status, j.salesforce_synced_at::text synced,
             j.closed_on::text, j.close_reason FROM job j JOIN property p ON p.id=j.property_id WHERE j.id=$1`, [id]);
   if (!j) return null;
-  const tl: TimelineItem[] = [{ on: j.requested_on, what: 'Requested', detail: [SOURCE_LABEL[j.source], j.requested_by, j.request_notes].filter(Boolean).join(' · ') }];
+  const { loadLists } = await import('../lists/lists');
+  const tl: TimelineItem[] = [{ on: j.requested_on, what: 'Requested', detail: [(await loadLists(db)).label('job_source', j.source), j.requested_by, j.request_notes].filter(Boolean).join(' · ') }];
 
   const audits = (await db.query<{ id: string; on: string; filename: string | null; ended: string | null }>(
     `SELECT b.id, b.imported_at::date::text "on", b.filename,

@@ -1,4 +1,5 @@
 import { getDb } from '@/src/server/db';
+import { loadLists } from '@/src/lists/lists';
 import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { listModels, inField, currentPart } from '@/src/equipment/registry';
@@ -9,7 +10,7 @@ import { Flash, one, type SP } from '../ui';
 const money = (n: number | null | undefined) => (n === null || n === undefined ? '' : `$${n.toFixed(2)}`);
 export default async function Equipment({ searchParams }: { searchParams: SP }) {
   const s = await requireCan('price.view');
-  const sp = await searchParams; const db = await getDb(); const on = today();
+  const sp = await searchParams; const db = await getDb(); const on = today(); const lists = await loadLists(db);
   const edit = can(s, 'equipment.edit');
   const [models, field] = await Promise.all([listModels(db), inField(db)]);
   const parts = new Map(await Promise.all(models.flatMap((m) => [m.partItemId, m.batteryItemId]).filter((x): x is string => !!x)
@@ -32,7 +33,7 @@ export default async function Equipment({ searchParams }: { searchParams: SP }) 
           <table>
             <thead><tr><th>Code in reports</th><th>Kind</th><th className="n">Devices</th><th className="n">Properties</th><th></th></tr></thead>
             <tbody>{unknown.map((u) => (
-              <tr key={u.code + u.kind}><td><b>{u.code}</b></td><td>{u.kind}</td><td className="n">{u.devices}</td><td className="n">{u.properties}</td>
+              <tr key={u.code + u.kind}><td><b>{u.code}</b></td><td>{lists.label('device_kind', u.kind)}</td><td className="n">{u.devices}</td><td className="n">{u.properties}</td>
                 <td>{edit && <a className="btn secondary" href={`/equipment/new?model=${encodeURIComponent(u.code)}&kind=${u.kind}`}>Add</a>}</td></tr>
             ))}</tbody>
           </table>
@@ -40,7 +41,7 @@ export default async function Equipment({ searchParams }: { searchParams: SP }) 
       )}
 
       <form method="get" className="row" style={{ alignItems: 'flex-end' }}>
-        <div className="field"><label htmlFor="kind">Kind</label><select id="kind" name="kind" defaultValue={kind}><option value="">All</option>{[...new Set(models.map((m) => m.kind))].map((k) => <option key={k} value={k}>{k}</option>)}</select></div>
+        <div className="field"><label htmlFor="kind">Kind</label><select id="kind" name="kind" defaultValue={kind}><option value="">All</option>{[...new Set(models.map((m) => m.kind))].map((k) => <option key={k} value={k}>{lists.label('device_kind', k)}</option>)}</select></div>
         <div className="field"><label htmlFor="status">Status</label><select id="status" name="status" defaultValue={status}><option value="">All</option><option value="current">Current</option><option value="phasing_out">Phasing out</option><option value="obsolete">Obsolete</option></select></div>
         <div className="field"><button className="secondary" type="submit">Show</button></div>
         {edit && <div className="field" style={{ marginLeft: 'auto' }}><a className="btn" href="/equipment/new">Add a model</a></div>}
@@ -52,7 +53,7 @@ export default async function Equipment({ searchParams }: { searchParams: SP }) 
             return (
               <tr key={m.id}>
                 <td><a href={`/equipment/${m.id}`}><b>{m.manufacturer} {m.model}</b></a>{m.aliases.length > 0 && <div className="small">also: {m.aliases.join(', ')}</div>}</td>
-                <td>{m.kind}</td><td className="small">{m.readingSystem ?? ''}{m.services.length ? ` · ${m.services.join(', ')}` : ''}</td>
+                <td>{lists.label('device_kind', m.kind)}</td><td className="small">{m.readingSystem ?? ''}{m.services.length ? ` · ${m.services.join(', ')}` : ''}</td>
                 <td><StatusBadge m={m} /></td>
                 <td className="small">{part ? `${part.name} ${money(part.price)}` : '—'}</td>
                 <td className="small">{bat ? `${bat.name} ${money(bat.price)}` : m.kind === 'transmitter' || m.kind === 'combo' ? 'default price' : '—'}</td>

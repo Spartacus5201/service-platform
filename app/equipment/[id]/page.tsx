@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
+import { loadLists } from '@/src/lists/lists';
 import { requireCan } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { getModel, listModels, inField, catalogOptions, suggestParts, KINDS, STATUSES, STATUS_LABEL, type CatalogOption } from '@/src/equipment/registry';
@@ -32,6 +33,7 @@ export default async function ModelPage({ params, searchParams }: { params: Prom
   if (!isNew && !m) notFound();
   const draft = { manufacturer: one(sp.manufacturer) ?? '', model: one(sp.model) ?? '', kind: one(sp.kind) && (KINDS as readonly string[]).includes(one(sp.kind)!) ? one(sp.kind)! : 'transmitter' };
   const kind = m?.kind ?? draft.kind;
+  const lists = await loadLists(db);
   const codes = m ? [m.model, ...m.aliases] : [draft.model];
   const [models, services, partOpts, batOpts] = await Promise.all([listModels(db), listServices(db, { includeRetired: true }), catalogOptions(db, COMPONENT[kind] ?? [kind]), catalogOptions(db, ['battery'])]);
   const field = m ? (await inField(db)).filter((f) => f.model?.id === m.id) : [];
@@ -56,7 +58,7 @@ export default async function ModelPage({ params, searchParams }: { params: Prom
           <div className="row">
             <div className="field"><label htmlFor="manufacturer">Manufacturer</label><input id="manufacturer" name="manufacturer" list="mfrs" required defaultValue={m?.manufacturer ?? draft.manufacturer} /><datalist id="mfrs">{manufacturers.map((x) => <option key={x} value={x} />)}</datalist></div>
             <div className="field"><label htmlFor="model">Model code (as reports show it)</label><input id="model" name="model" required defaultValue={m?.model ?? draft.model} /></div>
-            <div className="field"><label htmlFor="kind">Kind</label><select id="kind" name="kind" defaultValue={kind}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></div>
+            <div className="field"><label htmlFor="kind">Kind</label><select id="kind" name="kind" defaultValue={kind}>{KINDS.map((k) => <option key={k} value={k}>{lists.label('device_kind', k)}</option>)}</select></div>
           </div>
           <div className="row">
             <div className="field" style={{ flex: 2 }}><label htmlFor="aliases">Other names reports use (comma separated)</label><input id="aliases" name="aliases" defaultValue={m?.aliases.join(', ') ?? ''} placeholder="e.g. NC-TR4, TR-4" /></div>
@@ -82,7 +84,7 @@ export default async function ModelPage({ params, searchParams }: { params: Prom
           <div className="actions"><button type="submit">{m ? 'Save' : 'Add to registry'}</button> <a className="btn secondary" href="/equipment">Cancel</a></div>
         </form>
       ) : m && (
-        <div className="card small">{m.kind} · {m.readingSystem ?? 'no system set'} · {m.services.join(', ') || 'no services set'}{m.aliases.length ? ` · also: ${m.aliases.join(', ')}` : ''}{m.notes ? ` · ${m.notes}` : ''}</div>
+        <div className="card small">{lists.label('device_kind', m.kind)} · {m.readingSystem ?? 'no system set'} · {m.services.join(', ') || 'no services set'}{m.aliases.length ? ` · also: ${m.aliases.join(', ')}` : ''}{m.notes ? ` · ${m.notes}` : ''}</div>
       )}
       {history.length > 0 && (<>
         <h2>Changes</h2>

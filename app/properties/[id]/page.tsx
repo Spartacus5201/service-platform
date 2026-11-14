@@ -13,7 +13,8 @@ import { requireSession } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { getProperty, propertyDocuments, propertyImports, propertyUnits } from '@/src/server/queries';
 import { saveSystemNotesAction, updateProperty } from '../../server-actions/property';
-import { BRANDS, MILESTONES, PRICE_ITEMS, UTILITIES, equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
+import { choices, loadLists } from '@/src/lists/lists';
+import { equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
 import { Badge, Flash, one, us, type SP } from '../../ui';
 import ImportForm from './import-form';
 import { inField } from '@/src/equipment/registry';
@@ -24,6 +25,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const s = await requireSession();
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
+  const lists = await loadLists(db);
   const p = await getProperty(db, id);
   if (!p) notFound();
   const [units, imports, docs] = await Promise.all([propertyUnits(db, id), propertyImports(db, id), propertyDocuments(db, id)]);
@@ -104,7 +106,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
             <input type="hidden" name="property_id" value={id} />
             <div className="row">
               <div className="field" style={{ flex: 2 }}><label htmlFor="job_title">Title</label><input id="job_title" name="title" required placeholder="e.g. Units not reading on October bills" /></div>
-              <div className="field"><label htmlFor="job_source">Came in by</label><select id="job_source" name="source" defaultValue="salesforce"><option value="salesforce">Salesforce case</option><option value="phone">Phone</option><option value="email">Email</option><option value="audit">Audit</option><option value="other">Other</option></select></div>
+              <div className="field"><label htmlFor="job_source">Came in by</label><select id="job_source" name="source" defaultValue="salesforce">{choices(lists, 'job_source').map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
               <div className="field"><label htmlFor="job_on">Requested on</label><input id="job_on" name="requested_on" type="date" defaultValue={today()} /></div>
             </div>
             <div className="row">
@@ -205,17 +207,17 @@ export default async function PropertyPage({ params, searchParams }: { params: P
           <input type="hidden" name="id" value={id} />
           {[0, 1, 2].map((i) => (
             <div className="row" key={i}>
-              <div className="field"><label htmlFor={`utility_${i + 1}`}>Utility {i + 1}</label><select id={`utility_${i + 1}`} name={`utility_${i + 1}`} defaultValue={sys.utilities[i]?.utility ?? ''}><option value=""></option>{UTILITIES.map((u) => <option key={u}>{u}</option>)}</select></div>
+              <div className="field"><label htmlFor={`utility_${i + 1}`}>Utility {i + 1}</label><select id={`utility_${i + 1}`} name={`utility_${i + 1}`} defaultValue={sys.utilities[i]?.utility ?? ''}><option value=""></option>{choices(lists, 'utility', { keep: sys.utilities[i]?.utility }).map(([c, t]) => <option key={c} value={c}>{t}</option>)}</select></div>
               <div className="field" style={{ flex: 2 }}><label htmlFor={`device_${i + 1}`}>Meter / device</label><input id={`device_${i + 1}`} name={`device_${i + 1}`} defaultValue={sys.utilities[i]?.device ?? ''} /></div>
             </div>
           ))}
           <div className="row">
-            <div className="field"><label htmlFor="system_brand">System</label><select id="system_brand" name="system_brand" defaultValue={sys.systemBrand ?? ''}><option value=""></option>{BRANDS.map((b) => <option key={b}>{b}</option>)}</select></div>
+            <div className="field"><label htmlFor="system_brand">System</label><select id="system_brand" name="system_brand" defaultValue={sys.systemBrand ?? ''}><option value=""></option>{choices(lists, 'system_brand', { keep: sys.systemBrand }).map(([c, t]) => <option key={c} value={c}>{t}</option>)}</select></div>
             <div className="field" style={{ flex: 2 }}><label htmlFor="system_id">Collector / gateway ID</label><input id="system_id" name="system_id" defaultValue={sys.systemId ?? ''} /></div>
             <div className="field" style={{ flex: 2 }}><label htmlFor="collector_location">Location</label><input id="collector_location" name="collector_location" defaultValue={sys.collectorLocation ?? ''} /></div>
           </div>
           <div className="row">
-            <div className="field"><label htmlFor="milestone_kind">Milestone</label><select id="milestone_kind" name="milestone_kind" defaultValue={sys.milestoneKind ?? ''}><option value=""></option>{MILESTONES.map((m) => <option key={m}>{m}</option>)}</select></div>
+            <div className="field"><label htmlFor="milestone_kind">Milestone</label><select id="milestone_kind" name="milestone_kind" defaultValue={sys.milestoneKind ?? ''}><option value=""></option>{choices(lists, 'milestone', { keep: sys.milestoneKind }).map(([c, t]) => <option key={c} value={c}>{t}</option>)}</select></div>
             <div className="field"><label htmlFor="milestone_on">Date</label><input id="milestone_on" name="milestone_on" type="date" defaultValue={sys.milestoneOn ?? ''} /></div>
             <div className="field"><label style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}><input type="checkbox" name="msa" defaultChecked={p.msa} /> Meter service agreement (charge code 21)</label></div>
           </div>
@@ -232,7 +234,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
               <p className="small">Replace the catalog price (and the default labor charge) on new documents for this property. Leave empty to use the catalog.</p>
               {priceRows.map(([item, price], i) => (
                 <div className="row" key={i}>
-                  <div className="field"><label htmlFor={`price_item_${i + 1}`}>Item</label><select id={`price_item_${i + 1}`} name={`price_item_${i + 1}`} defaultValue={item}><option value=""></option>{PRICE_ITEMS.map((x) => <option key={x}>{x}</option>)}</select></div>
+                  <div className="field"><label htmlFor={`price_item_${i + 1}`}>Item</label><select id={`price_item_${i + 1}`} name={`price_item_${i + 1}`} defaultValue={item}><option value=""></option>{choices(lists, 'price_item', { keep: item || null }).map(([c, t]) => <option key={c} value={c}>{t}</option>)}</select></div>
                   <div className="field"><label htmlFor={`price_${i + 1}`}>Price</label><input id={`price_${i + 1}`} name={`price_${i + 1}`} className="num" inputMode="decimal" defaultValue={price === '' ? '' : String(price)} /></div>
                 </div>
               ))}

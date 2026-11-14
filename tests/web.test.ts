@@ -148,3 +148,17 @@ describe('own records (technicians)', () => {
     expect(await redirectOf(addPhotoAction(photo(theirs)))).toMatch(/role cannot do that|not allowed|not yours|your own/i);
   }, 60000);
 });
+
+describe('lists', () => {
+  it('only list editors change lists, and the page is theirs', async () => {
+    const { saveListItemAction } = await import('../app/server-actions/lists');
+    const f = () => { const x = new FormData(); x.set('list', 'job_source'); x.set('label', 'Walk-in'); x.set('active', 'on'); return x; };
+    for (const role of ['coordinator', 'scheduler', 'technician', 'billing'] as Role[]) {
+      await signInAs(role);
+      expect([role, await redirectOf(saveListItemAction(f()))]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+    }
+    await signInAs('manager');
+    expect(await redirectOf(saveListItemAction(f()))).toMatch(/Added/);
+    expect(await redirectOf(saveListItemAction(f()))).toMatch(/already on the list/);
+  });
+});

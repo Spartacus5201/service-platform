@@ -23,10 +23,9 @@ export async function saveSystemNotesAction(fd: FormData) {
   const sess = await requireCan('property.edit');
   const id = s(fd, 'id')!; const db = await getDb();
   const utilities = [1, 2, 3].map((i) => ({ utility: s(fd, `utility_${i}`) ?? '', device: s(fd, `device_${i}`) ?? '' })).filter((u) => u.utility || u.device);
-  const kind = s(fd, 'milestone_kind');
   const notes: SystemNotes = {
     utilities, systemBrand: s(fd, 'system_brand'), systemId: s(fd, 'system_id'), collectorLocation: s(fd, 'collector_location'),
-    milestoneKind: kind === 'Install Complete' || kind === 'Takeover' || kind === 'Upgraded' ? kind : null, milestoneOn: s(fd, 'milestone_on'),
+    milestoneKind: s(fd, 'milestone_kind'), milestoneOn: s(fd, 'milestone_on'),
     techNote: s(fd, 'tech_note'), transmitterDevice: s(fd, 'transmitter_device'), meterDevice: s(fd, 'meter_device'), equipment: parseEquipment(s(fd, 'equipment') ?? ''),
   };
   // Price editors set property prices; anyone else saves the notes and leaves the prices as they were.

@@ -4,7 +4,8 @@ import { requireCanOwn } from '@/src/server/session';
 import { isOwnJob } from '@/src/jobs/own';
 import { can } from '@/src/auth/auth';
 import { today } from '@/src/server/dates';
-import { jobDetail, STAGE, SOURCE_LABEL, type JobSource } from '@/src/jobs/jobs';
+import { jobDetail, STAGE } from '@/src/jobs/jobs';
+import { choices, loadLists } from '@/src/lists/lists';
 import { AAR_LABEL } from '@/src/service/aar';
 import { attachAuditAction, closeJobAction, refreshSalesforceAction, updateJobAction } from '../../server-actions/jobs';
 import { createDocumentAction } from '../../server-actions/documents';
@@ -16,6 +17,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
   const s = await requireCanOwn('job.view');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
+  const lists = await loadLists(db);
   const j = await jobDetail(db, id); if (!j) notFound();
   if (!can(s, 'job.view') && !(await isOwnJob(db, id, s.userId))) notFound();
   const manage = can(s, 'job.manage'); const draft = can(s, 'document.draft');
@@ -49,7 +51,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
         <input type="hidden" name="job_id" value={j.id} />
         <div className="row">
           <div className="field" style={{ flex: 2 }}><label htmlFor="title">Title</label><input id="title" name="title" defaultValue={j.title} required /></div>
-          <div className="field"><label htmlFor="source">Came in by</label><select id="source" name="source" defaultValue={j.source}>{(Object.keys(SOURCE_LABEL) as JobSource[]).map((k) => <option key={k} value={k}>{SOURCE_LABEL[k]}</option>)}</select></div>
+          <div className="field"><label htmlFor="source">Came in by</label><select id="source" name="source" defaultValue={j.source}>{choices(lists, 'job_source', { keep: j.source }).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
           <div className="field"><label htmlFor="requested_on">Requested on</label><input id="requested_on" name="requested_on" type="date" defaultValue={j.requestedOn} /></div>
           <div className="field"><label htmlFor="requested_by">Requested by</label><input id="requested_by" name="requested_by" defaultValue={j.requestedBy ?? ''} /></div>
         </div>
@@ -102,7 +104,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
         <div className="tablewrap"><table>
           <thead><tr><th>Visit</th><th>Units</th><th>Client notes</th><th>Invoicing</th></tr></thead>
           <tbody>{j.visits.map((v) => (
-            <tr key={v.id}><td><a href={`/visits/${v.id}`}>{us(v.visitedOn)}</a> <span className="small">{v.outcome.replaceAll('_', ' ')}</span></td><td>{v.units}</td>
+            <tr key={v.id}><td><a href={`/visits/${v.id}`}>{us(v.visitedOn)}</a> <span className="small">{lists.label('visit_outcome', v.outcome)}</span></td><td>{v.units}</td>
               <td>{v.notesStatus === 'approved' ? <Badge tone="ok">approved</Badge> : <Badge tone="warn">draft</Badge>}</td>
               <td>{v.invoiced ? <Badge tone={v.invoiceRef ? 'ok' : 'info'}>{v.invoiceRef ? `invoice ${v.invoiceRef}` : 'sent, no invoice # yet'}</Badge> : <Badge>not sent</Badge>}</td></tr>
           ))}</tbody>
