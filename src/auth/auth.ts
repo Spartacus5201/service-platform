@@ -54,11 +54,11 @@ export async function createUser(db: Q, u: { email: string; name: string; role?:
   return id;
 }
 
-/** A person's active roles and the permissions they add up to. */
+/** A person's active roles (in the roles' list order) and the permissions they add up to. */
 export async function loadAccess(q: Q, userId: string): Promise<{ roles: Role[]; perms: Partial<Record<Permission, Scope>> }> {
   const rows = (await q.query<{ role_key: string; permission: string | null; scope: Scope | null }>(
     `SELECT ur.role_key, rp.permission, rp.scope FROM user_role ur JOIN role r ON r.key=ur.role_key AND r.retired_at IS NULL
-       LEFT JOIN role_permission rp ON rp.role_key=ur.role_key WHERE ur.user_id=$1`, [userId])).rows;
+       LEFT JOIN role_permission rp ON rp.role_key=ur.role_key WHERE ur.user_id=$1 ORDER BY r.sort, r.key`, [userId])).rows;
   const perms: Partial<Record<Permission, Scope>> = {};
   for (const r of rows) if (r.permission && isPermission(r.permission)) perms[r.permission] = perms[r.permission] === 'all' || r.scope === 'all' ? 'all' : 'own';
   return { roles: [...new Set(rows.map((r) => r.role_key))], perms };

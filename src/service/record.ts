@@ -42,6 +42,8 @@ export interface VisitInput {
   propertyId: string;
   visitedOn: string;                     // ISO date
   technician?: string | null;
+  /** The technician's user, when they have one. Found from the name when not given. */
+  technicianId?: string | null;
   outcome: Outcome;
   salesforceCase?: string | null;
   salesforceWorkOrder?: string | null;
@@ -84,10 +86,11 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
   let visitId = '';
   await db.transaction(async (tx) => {
     visitId = (await one<{ id: string }>(tx,
-      `INSERT INTO visit (property_id,visited_on,technician,outcome,salesforce_case,salesforce_work_order,notes,created_by,document_id,job_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      `INSERT INTO visit (property_id,visited_on,technician,outcome,salesforce_case,salesforce_work_order,notes,created_by,document_id,job_id,technician_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+               COALESCE($11::uuid, (SELECT u.id FROM app_user u WHERE u.active AND lower(trim(u.name)) = lower(trim($3)) LIMIT 1))) RETURNING id`,
       [input.propertyId, input.visitedOn, input.technician ?? null, input.outcome, input.salesforceCase ?? null,
-       input.salesforceWorkOrder ?? null, input.notes ?? null, input.createdBy ?? null, input.documentId ?? null, input.jobId ?? null]))!.id;
+       input.salesforceWorkOrder ?? null, input.notes ?? null, input.createdBy ?? null, input.documentId ?? null, input.jobId ?? null, input.technicianId ?? null]))!.id;
 
     for (const e of input.events) {
       const ep = await one<{ property_id: string }>(tx,

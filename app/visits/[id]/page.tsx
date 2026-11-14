@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
-import { requireCan } from '@/src/server/session';
-import { can } from '@/src/auth/auth';
+import { requireCanOwn } from '@/src/server/session';
+import { isOwnVisit } from '@/src/jobs/own';
+import { can, canOwn } from '@/src/auth/auth';
 import { closeoutData, clientText } from '@/src/service/closeout';
 import { corrections } from '@/src/service/correct';
 import { aarForVisit, AAR_LABEL } from '@/src/service/aar';
@@ -11,9 +12,13 @@ import type { ReactNode } from 'react';
 import { Badge, Flash, one, us, type SP, type Tone } from '../../ui';
 
 export default async function VisitCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const s = await requireCan('job.view');
+  const s = await requireCanOwn('job.view');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
+  // Own-records holders (technicians) see their own visits: what was done and whether it held, and add photos.
+  const full = can(s, 'job.view');
+  if (!full && !(await isOwnVisit(db, id, s.userId))) notFound();
+  const canWording = can(s, 'visit.record'); const canApprove = can(s, 'notes.approve'); const canPhoto = canOwn(s, 'visit.record');
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();
   const approved = c.visit.status === 'approved';
   const subs = (await db.query<{ ref: string | null }>(`SELECT DISTINCT s.id, s.external_ref ref FROM invoice_submission s JOIN invoice_line il ON il.submission_id=s.id JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows;
@@ -52,10 +57,10 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
       <p className="sub">{c.visit.technician ?? 'no technician'} · {c.property.name} · code {c.code}, charge {c.chargeCode}{c.visit.documentNumber ? ` · WA ${c.visit.documentNumber}` : ''}
         {' '}· NI {c.counts.NI} · NT {c.counts.NT} · INT {c.counts.INT} · High/Low {c.counts.HIGHLOW} · Other {c.counts.other} · Total {c.counts.total}</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
-      <ol className="steps">{TITLES.map((t, i) => <li key={t}><a href={`#step${i + 1}`}><span className="stepno">{i + 1}</span> {t}</a> <Badge tone={st[i].tone}>{st[i].label}</Badge></li>)}</ol>
+      <ol className="steps">{TITLES.slice(0, full ? TITLES.length : 2).map((t, i) => <li key={t}><a href={`#step${i + 1}`}><span className="stepno">{i + 1}</span> {t}</a> <Badge tone={st[i].tone}>{st[i].label}</Badge></li>)}</ol>
 
       <Step n={1} hint="Read what the technician reported and turn it into client wording. Wording is drafted from fixed phrases for the issue and result; edit anything. Saving after approval sends the notes back to draft.">
-        <form action={saveCloseoutAction}>
+{canWording && (        <form action={saveCloseoutAction}>
           <input type="hidden" name="visit_id" value={id} />
           <div className="field"><label htmlFor="summary">Opening paragraph for the client (optional)</label><textarea id="summary" name="summary" rows={2} defaultValue={c.visit.summary ?? ''} /></div>
           <div className="tablewrap"><table>
@@ -73,7 +78,11 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
             </tbody>
           </table></div>
           <div className="actions"><button type="submit" className="secondary">Save wording</button></div>
-        </form>
+        </form>)}
+        {!canWording && <div className="tablewrap"><table>
+          <thead><tr><th>Unit</th><th>Issue</th><th>Result</th><th>Notes</th></tr></thead>
+          <tbody>{c.units.map((u) => <tr key={u.eventId}><td className="nowrap">{u.building}-{u.unit}<div className="small">{u.startRead ?? '—'} → {u.endRead ?? '—'}{u.newTxId ? ` · new TX ${u.newTxId}` : ''}</div></td><td>{u.issue}</td><td>{RESULT_LABEL[u.result]}</td><td className="small">{u.techNotes ?? '—'}</td></tr>)}</tbody>
+        </table></div>}
         <h3>Photos</h3>
         <div className="tablewrap"><table><tbody>
           {c.photos.map((p) => (
@@ -81,7 +90,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
           ))}
           {!c.photos.length && <tr><td className="small">No photos.</td></tr>}
         </tbody></table></div>
-        <form action={addPhotoAction} encType="multipart/form-data" className="row">
+{canPhoto && (        <form action={addPhotoAction} encType="multipart/form-data" className="row">
           <input type="hidden" name="visit_id" value={id} />
           <div className="field"><label htmlFor="photo">Photo (JPEG or PNG, up to 8 MB)</label><input id="photo" name="photo" type="file" accept="image/jpeg,image/png" /></div>
           <div className="field"><label htmlFor="endpoint_id">Unit</label>
@@ -89,8 +98,8 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
           <div className="field"><label htmlFor="caption">Caption</label><input id="caption" name="caption" /></div>
           <div className="field"><label><input type="checkbox" name="include" /> Show to client</label></div>
           <div className="actions"><button type="submit" className="secondary">Add photo</button></div>
-        </form>
-        {!approved && <form action={approveCloseoutAction} style={{ marginTop: '1rem' }}><input type="hidden" name="visit_id" value={id} /><button type="submit">Approve client wording</button> <span className="small">Unlocks invoicing and the final client notes, and builds the ID update.</span></form>}
+        </form>)}
+        {!approved && canApprove && <form action={approveCloseoutAction} style={{ marginTop: '1rem' }}><input type="hidden" name="visit_id" value={id} /><button type="submit">Approve client wording</button> <span className="small">Unlocks invoicing and the final client notes, and builds the ID update.</span></form>}
       </Step>
 
       <Step n={2} hint="Each serviced unit before the visit, what was done, and the first audit or check-in after it. Re-checked automatically with every import.">
@@ -105,8 +114,9 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
         <p><a className="btn secondary" href={`/aar?visit=${id}`} target="_blank">After Action Report PDF</a>{c.visit.documentId && <> <a className="btn secondary" href={`/aar?document=${c.visit.documentId}`} target="_blank">For the whole WA</a></>}</p>
       </Step>
 
+      {full && (<>
       <Step n={3} hint="New transmitter or meter IDs that need updating in the billing system. Confirmed automatically when an import shows the new ID.">
-        {replaced ? <p><a className="btn secondary" href={`/visits/${id}/ids`}>Open the ID update record</a> <span className="small">{replaced} unit(s) with a new ID.</span></p> : <p className="small">No equipment was replaced on this visit.</p>}
+        {replaced ? <p>{can(s, 'idupdate.manage') && <a className="btn secondary" href={`/visits/${id}/ids`}>Open the ID update record</a>} <span className="small">{replaced} unit(s) with a new ID.</span></p> : <p className="small">No equipment was replaced on this visit.</p>}
       </Step>
 
       <Step n={4} hint="The internal sheet admin uses to raise the invoice in the company layout.">
@@ -134,11 +144,12 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
       </Step>
 
       <h2>Corrections</h2>
-      <p><a className="btn secondary" href={`/visits/${id}/correct`}>Correct this record</a></p>
+      {can(s, 'service.correct') && <p><a className="btn secondary" href={`/visits/${id}/correct`}>Correct this record</a></p>}
       {log.length > 0 && <div className="tablewrap"><table>
         <thead><tr><th>When</th><th>Who</th><th>Change</th><th>Reason</th></tr></thead>
         <tbody>{log.map((l, i) => <tr key={i}><td className="nowrap">{l.at}</td><td>{l.by ?? '—'}</td><td>{l.summary}</td><td>{l.reason ?? '—'}</td></tr>)}</tbody>
       </table></div>}
+      </>)}
     </>
   );
 }

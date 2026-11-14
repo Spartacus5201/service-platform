@@ -3,7 +3,7 @@ import { requireSession } from '@/src/server/session';
 import { can } from '@/src/auth/auth';
 import { listProperties } from '@/src/server/queries';
 import { createProperty } from './server-actions/property';
-import { todayQueues } from '@/src/queries/today';
+import { queuesFor, todayQueues } from '@/src/queries/today';
 import { today } from '@/src/server/dates';
 import { Today } from './today';
 import { Badge, Flash, one, us, type SP } from './ui';
@@ -15,14 +15,14 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
   const pq = (one(sp.pq) ?? '').trim();
   const props = await listProperties(db, { q: pq });
   const todayStr = today();
-  const showToday = can(s, 'document.view');
-  const q = showToday ? await todayQueues(db, today()) : null;
+  const order = queuesFor(s);
+  const q = order.length ? await todayQueues(db, todayStr, { only: order, userId: s.userId }) : null;
   return (
     <>
       <h1>{q ? 'Home' : 'Properties'}</h1>
       <p className="sub">Pick a property to import reports, review an audit, or look up a unit.</p>
       <Flash msg={one(sp.msg)} error={one(sp.error)} />
-      {q && <Today q={q} />}
+      {q && <Today q={q} order={order} />}
       <h2>Properties</h2>
       <form method="get" role="search" className="row" style={{ alignItems: 'flex-end', marginBottom: '.5rem' }}>
         <div className="field"><label htmlFor="pq">Filter by name, ClassID or address</label><input id="pq" name="pq" defaultValue={pq} /></div>

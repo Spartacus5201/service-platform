@@ -10,7 +10,7 @@ Facts that change over time are data people edit in the app; the workflow stays 
 
 ## Next, in order
 
-1. **Roles and permissions** (built: roles as data, Admin > Roles grid with restore defaults, several roles per person, every check moved to the new permissions, today's users moved: admin = Admin + Manager, office = Coordinator + Billing). Left: "own" records for technicians (their own jobs and visits), and Today by role (each role's own queues). Plan: `ROLES.md`.
+1. **Roles and permissions** (built: roles as data, Admin > Roles grid with restore defaults, several roles per person, every check moved to the new permissions, today's users moved: admin = Admin + Manager, office = Coordinator + Billing). Also built: "own" records for technicians (their own jobs and visits) and Today by role (each role's own queues first; technicians see their own visits and revisits). Schedules, locations and their queues come with scheduling and inventory. Plan: `ROLES.md`.
 2. **Editable lists**: (service codes done) audit result codes and their meaning, invoicing codes, visit actions, device types, milestone types move from fixed code values to short lists in Admin. Retire, never delete, so old audits and documents still read correctly.
 3. **Rules as tables, tested before saving**: which component each audit code points to and whether it needs service become an editable table. Before a change is saved, the last real audits are re-run and the differences shown.
 4. **Setup export and import**: the whole setup (lists, equipment, rules, layouts, prices, clauses, settings) as one file, so it moves from laptop to company server unchanged and can be restored. "Effective from" dates on prices and rules so any past document can be explained.

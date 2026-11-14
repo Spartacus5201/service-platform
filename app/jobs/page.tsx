@@ -1,17 +1,22 @@
 import { getDb } from '@/src/server/db';
-import { requireCan } from '@/src/server/session';
+import { requireCanOwn } from '@/src/server/session';
+import { can } from '@/src/auth/auth';
+import { ownJobIds } from '@/src/jobs/own';
 import { today } from '@/src/server/dates';
 import { listJobs, STAGES, STAGE } from '@/src/jobs/jobs';
 import { Flash, one, us, daysSince, type SP } from '../ui';
 import { StageBadge } from './stage';
 
 export default async function Jobs({ searchParams }: { searchParams: SP }) {
-  await requireCan('job.view');
+  const s = await requireCanOwn('job.view');
   const sp = await searchParams;
   const db = await getDb();
   const property = one(sp.property);
   const closed = one(sp.closed) === '1';
-  const jobs = await listJobs(db, { propertyId: property, includeClosed: closed });
+  const all = await listJobs(db, { propertyId: property, includeClosed: closed });
+  // Own-records holders see the jobs they worked on.
+  const mine = can(s, 'job.view') ? null : new Set(await ownJobIds(db, s.userId));
+  const jobs = mine ? all.filter((j) => mine.has(j.id)) : all;
   const props = (await db.query<{ id: string; name: string }>(`SELECT id, name FROM property ORDER BY name`)).rows;
   const t = today();
   const stages = STAGES.filter((x) => (closed ? true : x !== 'closed')).filter((x) => jobs.some((j) => j.stage === x));

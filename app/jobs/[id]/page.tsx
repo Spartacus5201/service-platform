@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getDb } from '@/src/server/db';
-import { requireCan } from '@/src/server/session';
+import { requireCanOwn } from '@/src/server/session';
+import { isOwnJob } from '@/src/jobs/own';
 import { can } from '@/src/auth/auth';
 import { today } from '@/src/server/dates';
 import { jobDetail, STAGE, SOURCE_LABEL, type JobSource } from '@/src/jobs/jobs';
@@ -12,10 +13,12 @@ import { Badge, Flash, money, one, us, daysSince, type SP } from '../../ui';
 import { StageBadge } from '../stage';
 
 export default async function Job({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const s = await requireCan('job.view');
+  const s = await requireCanOwn('job.view');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const j = await jobDetail(db, id); if (!j) notFound();
+  if (!can(s, 'job.view') && !(await isOwnJob(db, id, s.userId))) notFound();
+  const manage = can(s, 'job.manage'); const draft = can(s, 'document.draft');
   const canPrice = can(s, 'price.view');
   const freeAudits = (await db.query<{ id: string; on: string; filename: string | null }>(
     `SELECT id, imported_at::date::text "on", filename FROM import_batch WHERE property_id=$1 AND job_id IS NULL AND kind IN ('auto_audit','manual_audit') ORDER BY imported_at DESC LIMIT 20`, [j.propertyId])).rows;
@@ -42,7 +45,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
       </div>
 
       <h2>Request</h2>
-      <form action={updateJobAction} className="card">
+      {manage && (<form action={updateJobAction} className="card">
         <input type="hidden" name="job_id" value={j.id} />
         <div className="row">
           <div className="field" style={{ flex: 2 }}><label htmlFor="title">Title</label><input id="title" name="title" defaultValue={j.title} required /></div>
@@ -56,18 +59,18 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
         </div>
         <div className="field"><label htmlFor="request_notes">What was asked</label><textarea id="request_notes" name="request_notes" rows={2} defaultValue={j.requestNotes ?? ''} /></div>
         <div className="actions"><button type="submit" className="secondary">Save request</button></div>
-      </form>
-      <form action={refreshSalesforceAction} className="row" style={{ marginTop: '.5rem', alignItems: 'center' }}>
+      </form>)}
+      {manage && (<form action={refreshSalesforceAction} className="row" style={{ marginTop: '.5rem', alignItems: 'center' }}>
         <input type="hidden" name="job_id" value={j.id} />
         {sf === 'off'
           ? <p className="small">Salesforce lookups are off on this server: type the case status by hand. They switch on when API access is granted (SALESFORCE-SETUP.md).</p>
           : <><button type="submit" className="secondary" disabled={!j.salesforceCase}>Refresh status from Salesforce</button>
               <span className="small">{sf === 'mock' ? 'Sample data (demo mode). ' : ''}{j.salesforceSyncedAt ? `Last read ${us(j.salesforceSyncedAt)} ${j.salesforceSyncedAt.slice(11, 16)}.` : 'Status typed by hand.'}</span></>}
-      </form>
+      </form>)}
 
       <h2>Audit</h2>
       {j.audits.length ? <ul>{j.audits.map((a) => <li key={a.id}><a href={`/properties/${j.propertyId}/audits/${a.id}`}>{a.filename ?? `Audit${a.ended ? ` ending ${us(a.ended)}` : ''}`}</a> imported {us(a.on)}</li>)}</ul> : <p className="small">No audit attached.</p>}
-      {open && !!freeAudits.length && (
+      {open && !!freeAudits.length && manage && (
         <form action={attachAuditAction} className="row">
           <input type="hidden" name="job_id" value={j.id} />
           <div className="field"><label htmlFor="batch_id">Attach an audit</label><select id="batch_id" name="batch_id">{freeAudits.map((a) => <option key={a.id} value={a.id}>{us(a.on)} {a.filename ?? ''}</option>)}</select></div>
@@ -83,7 +86,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
           <tbody>{j.documents.map((d) => <tr key={d.id}><td><a href={`/documents/${d.id}`}>{d.type} {d.number}</a> {d.title ?? ''}</td><td>{d.issued ? <Badge tone="ok">issued</Badge> : <Badge>draft</Badge>}</td><td>{us(d.createdOn)}</td>{canPrice && <td className="n">{d.type === 'RFM' ? '—' : money(d.quoted)}</td>}</tr>)}</tbody>
         </table></div>
       ) : <p className="small">No documents yet.</p>}
-      {open && (
+      {open && draft && (
         <form action={createDocumentAction} className="row">
           <input type="hidden" name="property_id" value={j.propertyId} /><input type="hidden" name="job_id" value={j.id} />
           {latestAudit && <input type="hidden" name="batch_id" value={latestAudit.id} />}
@@ -125,7 +128,8 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
       <ol className="jobline">{j.timeline.map((t, i) => <li key={i}><span className="nowrap small">{us(t.on)}</span> <b>{t.href ? <a href={t.href}>{t.what}</a> : t.what}</b>{t.detail ? <span className="small"> · {t.detail}</span> : null}</li>)}</ol>
 
       <h2>{open ? 'Close the job' : 'Closed'}</h2>
-      <form action={closeJobAction} className="row">
+      {!manage && <p className="small">{open ? 'Closed by a coordinator or manager when the work is done.' : `Closed ${us(j.closedOn)}${j.closeReason ? `: ${j.closeReason}` : ''}.`}</p>}
+      {manage && (<form action={closeJobAction} className="row">
         <input type="hidden" name="job_id" value={j.id} />
         {open ? (<>
           <input type="hidden" name="early" value={j.stage === 'ready' ? '0' : '1'} />
@@ -135,7 +139,7 @@ export default async function Job({ params, searchParams }: { params: Promise<{ 
           <p className="small">Closed {us(j.closedOn)}{j.closeReason ? `: ${j.closeReason}` : ''}.</p>
           <input type="hidden" name="reopen" value="1" /><div className="field"><button type="submit" className="secondary">Reopen</button></div>
         </>)}
-      </form>
+      </form>)}
     </>
   );
 }

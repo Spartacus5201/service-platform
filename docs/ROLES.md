@@ -1,6 +1,10 @@
 # Roles and permissions: plan
 
-**Status:** steps 1 and 2 are built (permissions in `src/auth/permissions.ts`, roles and the grid in the database, Admin > Roles, several roles per person, migration of today's users). Steps 3 to 5 are still to do. Until step 3, a permission held only for "own" records gives the person what technicians could always do (record service from the unit page) and nothing more; anything that would need "own" filtering stays closed to them.
+**Status:** steps 1 to 4 are built (permissions in `src/auth/permissions.ts`, roles and the grid in the database, Admin > Roles, several roles per person, migration of today's users, "own" records, Today by role). Step 5 arrives with scheduling and inventory.
+
+**Own records (step 3).** A visit belongs to a person when they are its technician (`visit.technician_id`, filled from the signed-in technician, or matched from the typed name) or they recorded it. One rule, in `src/jobs/own.ts`, used everywhere. Someone with "own" only for `job.view` and `visit.record` sees: the jobs their visits are on, their own visits (units, results, photos; no client wording, approvals or corrections), the After Action Report for one of their own visits (not a whole WA, which can include other people's visits), and can add photos to their own visits. A visit a technician records is always theirs, whatever name is typed. Schedules and locations become "own" when scheduling and inventory are built.
+
+**Today by role (step 4).** Each queue is shown to anyone holding one of its permissions (`QUEUE_PERMS` in `src/queries/today.ts`); each built-in role puts its own queues first (`ROLE_QUEUE_ORDER`), and a person with several roles gets the first role's queues first, in the roles' list order (Admin > Roles). A custom role gets the default order. Only the queues a person will see are worked out. People limited to their own visits get "Your revisits" and "Your recent visits" instead of everyone's. Changing who sees a queue is a change to the role grid, not to code. Queues for counts, stock, schedules and transfers arrive with scheduling and inventory.
 
 Built on top of the plan: a `clauses.edit` permission (standard clauses; Manager and Coordinator), and the Admin menu shows each person only the Admin sections their permissions allow (a Coordinator sees Import maps there). Permissions for scheduling, inventory and clients are added when those are built.
 
@@ -101,6 +105,6 @@ An Admin reviews each person after the switch and removes what they do not need.
 ## Build order
 1. Permission list in code; roles, role permissions and user roles in the database, seeded with the grid above; every `requireCan` and `can` check moved to the new permissions; existing users moved as in the table.
 2. Admin screens: the grid (role by permission, with "restore defaults"), users with several roles, the activity entries.
-3. "own" rules: technicians see their own schedule, visits and location.
-4. Today by role (queues above).
+3. "own" rules: technicians see their own schedule, visits and location. *(Built for visits and jobs; schedule and location with steps 5.)*
+4. Today by role (queues above). *(Built for today's queues.)*
 5. Scheduler and Manager screens arrive with scheduling and inventory.

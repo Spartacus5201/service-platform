@@ -117,3 +117,34 @@ describe('server actions', () => {
     expect((await w.db.query<{ p: string }>(`SELECT unit_price::text p FROM document_line WHERE id=$1`, [line])).rows[0].p).toBe('90.00');
   }, 60000);
 });
+
+describe('own records (technicians)', () => {
+  const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+  let mine = ''; let theirs = '';
+  beforeAll(async () => {
+    const { recordVisitAction } = await import('../app/server-actions/field');
+    await signInAs('technician');
+    const ep = await w.ep('102');
+    // a technician cannot record a visit in someone else's name: it is theirs whatever is typed
+    await redirectOf(recordVisitAction({}, fd({ endpoint_id: ep, property_id: w.pid, technician: 'Not Me', visited_on: '2026-11-10', outcome: 'completed', action: 'inspect_test' })));
+    mine = (await w.db.query<{ id: string }>(`SELECT id FROM visit WHERE technician_id=$1`, [users.technician])).rows[0]?.id ?? '';
+    const { recordVisit } = await import('../src/service/record');
+    theirs = (await recordVisit(w.db, { propertyId: w.pid, visitedOn: '2026-11-09', technician: 'Other Tech', outcome: 'completed', events: [{ endpointId: ep, action: 'inspect_test' }] })).visitId;
+  }, 60000);
+  it('the visit a technician records is theirs', () => { expect(mine).not.toBe(''); });
+  it('the after action report: their own visit only, never a whole WA', async () => {
+    const { GET } = await import('../app/aar/route');
+    await signInAs('technician');
+    expect((await GET(new Request(`http://t/aar?visit=${mine}`))).status).toBe(200);
+    expect((await GET(new Request(`http://t/aar?visit=${theirs}`))).status).toBe(403);
+    expect((await GET(new Request(`http://t/aar?document=${mine}`))).status).toBe(403);
+    await signInAs('scheduler');
+    expect((await GET(new Request(`http://t/aar?visit=${theirs}`))).status).toBe(200);
+  }, 60000);
+  it('photos: only on their own visits', async () => {
+    const { addPhotoAction } = await import('../app/server-actions/field');
+    await signInAs('technician');
+    const photo = (id: string) => { const f = fd({ visit_id: id }); f.set('photo', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 'a.jpg', { type: 'image/jpeg' })); return f; };
+    expect(await redirectOf(addPhotoAction(photo(theirs)))).toMatch(/role cannot do that|not allowed|not yours|your own/i);
+  }, 60000);
+});

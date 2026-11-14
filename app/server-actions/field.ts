@@ -1,4 +1,6 @@
 'use server';
+import { can } from '@/src/auth/auth';
+import { isOwnVisit } from '@/src/jobs/own';
 import { ACTIONS, OUTCOMES, RESULTS, PART_KINDS } from '@/src/service/record';
 
 import { redirect } from 'next/navigation';
@@ -24,7 +26,9 @@ export async function recordVisitAction(_: FormState, fd: FormData): Promise<For
   const replKind = oneOf(fd, 'repl_kind', PART_KINDS);
   try {
     await recordVisit(await getDb(), {
-      propertyId, visitedOn: s(fd, 'visited_on') ?? today(), technician: s(fd, 'technician'), outcome: oneOf(fd, 'outcome', OUTCOMES) ?? 'completed',
+      // Someone who may record only their own visits is the technician on it.
+      ...(can(sess, 'visit.record') ? { technician: s(fd, 'technician') } : { technician: s(fd, 'technician') ?? sess.name, technicianId: sess.userId }),
+      propertyId, visitedOn: s(fd, 'visited_on') ?? today(), outcome: oneOf(fd, 'outcome', OUTCOMES) ?? 'completed',
       salesforceCase: s(fd, 'salesforce_case'), salesforceWorkOrder: s(fd, 'salesforce_work_order'), notes: s(fd, 'visit_notes'), createdBy: sess.userId,
       events: [{
         endpointId, action, issueCode: s(fd, 'issue_code'), readAtService: n(fd, 'read_at_service'), notes: s(fd, 'notes'),
@@ -89,8 +93,9 @@ export async function approveCloseoutAction(fd: FormData) {
 }
 
 export async function addPhotoAction(fd: FormData) {
-  await requireCan('visit.record');
+  const sess = await requireCanOwn('visit.record');
   const id = s(fd, 'visit_id')!; const f = fd.get('photo');
+  if (!can(sess, 'visit.record') && !(await isOwnVisit(await getDb(), id, sess.userId))) redirect(withError(`/visits/${id}`, 'You can add photos to your own visits only.'));
   if (!(f instanceof File) || f.size === 0) redirect(withError(`/visits/${id}`, 'Choose a photo first.'));
   try {
     await addPhoto(await getDb(), id, { endpointId: s(fd, 'endpoint_id'), filename: (f as File).name, mime: (f as File).type, bytes: new Uint8Array(await (f as File).arrayBuffer()), caption: s(fd, 'caption'), includeInClient: fd.get('include') === 'on' });
