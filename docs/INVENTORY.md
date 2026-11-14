@@ -18,6 +18,7 @@ Goal: Service Platform becomes the home for inventory, replacing the inventory w
   - use (installed on a visit: comes from the visit record, from the technician's location)
   - return (removed equipment back to the office, or to damaged)
   - adjust (count difference, damage, loss; needs a reason)
+  - sell (parts sold to a B2B customer, out of a location)
 - **Stock on hand** at a location is the sum of its movements, so it can always be explained line by line.
 
 Rules from the service team:
@@ -42,11 +43,15 @@ Rules from the service team:
 - **Balances at three levels:** per location (on hand, reserved, available), per job (reserved, used), and the company total across all locations, with value at cost.
 - If a technician's location does not hold enough for a job, scheduling says so and offers a transfer from the office.
 
-## Prices
-The sell price is the same at every location, but can differ by client. Today a property can carry its own prices; client price lists (one set of prices for every property of a management company) come with the client record. Stock is always valued at cost.
+## Clients and prices
+The sell price is the same at every location, but can differ by client. A client is either a **property** (apartment complex, condo association) or a **B2B customer** (a plumber or electrician buying meters, a handyman buying parts). Each client can have its own price list; anything not on it uses the catalog price. Today a property can already carry its own prices; that becomes the property's client price list.
+
+B2B customers buy parts without a property or a service visit: a **sale** takes the parts out of a location (usually the office), is priced from that customer's list, and goes to Billing like any other invoice.
+
+Stock is always valued at cost.
 
 ## Who can do what
-A new **Manager** role approves stock-count differences and other adjustments. Office staff and technicians count; only a Manager (or admin) approves the adjustment. The role is added when inventory is built, together with its other approvals.
+A **Manager** approves stock-count differences and other adjustments, at any amount (no second approval). Schedulers and technicians count; only a Manager approves. Roles and what each can do are editable by an Admin: see `ROLES.md`.
 
 ## Connects to
 - Visits: parts used on a visit come out of the technician's location automatically.
@@ -54,6 +59,5 @@ A new **Manager** role approves stock-count differences and other adjustments. O
 - Equipment registry: each item knows its model, so obsolete stock can be flagged.
 - Install projects: their stock is reserved, not counted as available for service.
 
-## Open questions
-- Is there a dollar amount above which an adjustment needs a second Manager?
-- Who is the "client" for client prices: the management company, the owner, or either?
+## Kept flexible
+Locations, location types, reasons for adjustments, and who may approve are all lists or settings an admin or manager changes in the app, not code.
