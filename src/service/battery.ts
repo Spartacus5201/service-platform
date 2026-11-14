@@ -27,9 +27,15 @@ export async function pmSettings(q: Q): Promise<PmSettings> {
   return { code, warranty: get('pm_warranty') === 'never' ? 'never' : 'part', threshold: n('pm_battery_threshold', 25), waThreshold: n('pm_wa_threshold', 1), batteryPrice: n('pm_battery_price', 9.1) };
 }
 
-/** Battery for a transmitter model: a catalog battery whose name mentions the model, else the default price. */
+/**
+ * Battery for a transmitter model: the battery set on the model in the equipment registry; else a catalog battery
+ * whose name mentions the model; else the default battery price.
+ */
 export async function batteryFor(q: Q, model: string | null, asOf: string, pm?: PmSettings) {
   const s = pm ?? await pmSettings(q);
+  const { batteryForModel } = await import('../equipment/registry');
+  const reg = await batteryForModel(q, model, asOf);
+  if (reg && reg.price !== null) return { itemId: reg.id, price: reg.price, name: reg.name };
   const item = model ? (await q.query<{ id: string; name: string; price: string | null }>(
     `SELECT id, name, price::text FROM catalog_item WHERE kind='part' AND component='battery' AND active AND effective_from <= $2
         AND position(lower($1) in lower(name || ' ' || COALESCE(part_number,''))) > 0 ORDER BY effective_from DESC LIMIT 1`, [model, asOf])).rows[0] : undefined;

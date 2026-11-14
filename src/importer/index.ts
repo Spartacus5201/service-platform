@@ -4,6 +4,7 @@
 import type { Sheet } from '../parsers/common';
 import { normHeader, type Layout, type Overrides } from './layout';
 import { applyLayout, findHeaderRow, type Applied } from './apply';
+import type { ConvertContext } from './convert';
 import { TARGETS } from './targets';
 import { BUILTIN } from './builtin';
 import type { CimParse } from '../parsers/cim';
@@ -29,13 +30,13 @@ export function matchLayouts(sheets: Sheet[], layouts: Layout[] = BUILTIN): Cand
 
 export interface Preview extends Applied { importable: boolean; parsed: CimParse | UnitDirectoryParse | null; sample: Applied['rows'] }
 
-export function preview(sheets: Sheet[], layout: Layout, o: Overrides = {}): Preview {
+export function preview(sheets: Sheet[], layout: Layout, o: Overrides = {}, ctx?: ConvertContext): Preview {
   const sheet = o.sheet ? sheets.find((s) => s.name === o.sheet) : sheets.find((s) => findHeaderRow(s.rows, layout) >= 0) ?? sheets[0];
   if (!sheet) {
-    const empty = applyLayout({ name: o.sheet ?? '', rows: [] }, layout, o);
+    const empty = applyLayout({ name: o.sheet ?? '', rows: [] }, layout, o, ctx);
     return { ...empty, blocking: [`Sheet "${o.sheet}" is not in the file.`], importable: false, parsed: null, sample: [] };
   }
-  const a = applyLayout(sheet, layout, o);
+  const a = applyLayout(sheet, layout, o, ctx);
   const importable = !a.blocking.length && !a.rejected.length && a.rows.length > 0;
   const parsed = importable ? TARGETS[layout.target].build(a.rows.map((r) => r.values)) : null;
   if (parsed) parsed.warnings.push(...a.problems.filter((p) => p.severity === 'warning').map((p) => `Row ${p.row}: ${p.field} ${p.message}.`));

@@ -15,7 +15,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {s && !s.mustChangePassword && (
           <header className="topbar">
             <a className="brand" href="/">Service Platform</a>
-            <nav><a href="/">Home</a>{can(s.role, 'edit_documents') && <a href="/jobs">Jobs</a>}{can(s.role, 'edit_prices') && <a href="/catalog">Catalog</a>}{can(s.role, 'edit_documents') && <a href="/clauses">Clauses</a>}{can(s.role, 'manage_users') && <a href="/admin">Admin</a>}</nav>
+            <nav><a href="/">Home</a>{can(s.role, 'edit_documents') && <a href="/jobs">Jobs</a>}{can(s.role, 'edit_prices') && <a href="/catalog">Catalog</a>}{can(s.role, 'view_prices') && <a href="/equipment">Equipment</a>}{can(s.role, 'edit_documents') && <a href="/clauses">Clauses</a>}{can(s.role, 'manage_users') && <a href="/admin">Admin</a>}</nav>
             <form action="/search" method="get" role="search" className="search"><input name="q" type="search" placeholder="Search units, IDs, cases…" aria-label="Search" /></form>
             <div className="who">
               <span>{s.name} · {s.role}</span>

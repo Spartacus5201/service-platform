@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
+import { matchService } from '../lists/services';
 
 export type Cell = string | number | boolean | Date | null;
 export type Grid = Cell[][];
@@ -186,8 +187,14 @@ export function normLabel(v: Cell | undefined): string {
   return stripped;
 }
 
-/** Map a report's utility wording to the ServiceID code used by the audit reports. */
+/**
+ * Map a report's utility wording to the ServiceID code used by the audit reports. Exact words from the built-in
+ * service list first (so "Hot Water" is HW); otherwise the long-standing rule: gas, electric, else water.
+ * Services added in Admin are read by the import wizard; these built-in readers use the built-in list.
+ */
 export function utilityToServiceCode(utility: string | null): string {
+  const exact = utility ? matchService(utility) : null;
+  if (exact) return exact;
   const u = (utility ?? '').toLowerCase();
   if (u.includes('gas')) return 'GS';
   if (u.includes('elec')) return 'EL';

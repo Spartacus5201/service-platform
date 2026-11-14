@@ -1,6 +1,7 @@
 // Value converters. Each takes one raw cell and either returns a value or says exactly why it could not.
 // Blank cells are not errors here: whether a blank is allowed is the field's business (required / default).
 import { Cell, str, num, bool, parseDate, parseTimestamp } from '../parsers/common';
+import { DEFAULT_SERVICES, matchService, type ServiceType } from '../lists/services';
 
 export type FieldType = 'text' | 'label' | 'integer' | 'decimal' | 'percent' | 'date' | 'timestamp' | 'boolean' | 'service';
 export type Converted = { ok: true; value: string | number | boolean | null } | { ok: false; error: string };
@@ -14,19 +15,15 @@ function serialDate(n: number): string | null {
   return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10);
 }
 
-/** Service wording to the audit report's ServiceID. Unknown wording is an error, never a guess. */
-export function serviceCode(v: string): string | null {
-  const s = v.trim().toLowerCase();
-  if (['ws', 'gs', 'el'].includes(s)) return s.toUpperCase();
-  if (/\bgas\b/.test(s)) return 'GS';
-  if (/elec/.test(s)) return 'EL';
-  if (/water|\bhw\b|\bcw\b|\bhot\b|\bcold\b/.test(s)) return 'WS';
-  return null;
-}
+/** Service wording to the audit report's ServiceID, from the service list. Unknown wording is an error, never a guess. */
+export function serviceCode(v: string, services: ServiceType[] = DEFAULT_SERVICES): string | null { return matchService(v, services); }
+
+/** What a conversion may look up: the service list (from the database in the app, the built-in list otherwise). */
+export interface ConvertContext { services: ServiceType[] }
 
 export function isBlank(v: Cell | undefined): boolean { return str(v) === null; }
 
-export function convert(type: FieldType, raw: Cell | undefined): Converted {
+export function convert(type: FieldType, raw: Cell | undefined, ctx?: ConvertContext): Converted {
   if (isBlank(raw)) return ok(null);
   const s = str(raw)!;
   switch (type) {
@@ -48,6 +45,9 @@ export function convert(type: FieldType, raw: Cell | undefined): Converted {
       const t = parseTimestamp(raw); return t ? ok(t) : fail(`"${s}" is not a date and time`);
     }
     case 'boolean': { const b = bool(raw); return b !== null ? ok(b) : fail(`"${s}" is not yes or no`); }
-    case 'service': { const c = serviceCode(s); return c ? ok(c) : fail(`"${s}" is not a known service (water, gas, electric); map it by hand`); }
+    case 'service': {
+      const list = ctx?.services ?? DEFAULT_SERVICES; const c = serviceCode(s, list);
+      return c ? ok(c) : fail(`"${s}" is not a service code or name on the service list (${list.filter((x) => x.active).map((x) => x.code).join(', ')}); say how to read it`);
+    }
   }
 }

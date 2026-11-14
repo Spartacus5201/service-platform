@@ -37,6 +37,11 @@ async function setupProperty(db: Db, s: Spec) {
   // Cedar Court: a few transmitters that still read but report low battery (preventative maintenance).
   const healthy = units.filter((u) => u.code === 'OK').slice(0, 3).map((u) => u.unit);
   await importParsed(db, pid, parseCimNextCentury(synthCim(units, s.msa ? { ...o, lowBattery: healthy } : o)));
+  // Transmitter models as a status report would give them: Harbor View still has obsolete TR201s; Cedar Court's
+  // building 3 has TR4X units nobody has added to the equipment registry yet.
+  await db.query(`UPDATE device SET model = $2 WHERE property_id=$1 AND kind='transmitter'`, [pid, s.classId === '9910002' ? 'TR201' : 'TR4']);
+  if (s.msa) await db.query(`UPDATE device d SET model='TR4X' FROM installation i JOIN endpoint e ON e.id=i.endpoint_id JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id
+                              WHERE i.device_id=d.id AND d.property_id=$1 AND d.kind='transmitter' AND ltrim(b.label,'0')='3'`, [pid]);
   return { pid, units, o, audit };
 }
 
@@ -44,8 +49,22 @@ const ev = (endpointId: string, code: string, replace?: string): EventInput => r
   ? { endpointId, action: 'replace', issueCode: code, readAtService: 1000, endRead: 1002, notes: 'Replaced transmitter; unit now reading.', replacements: [{ kind: 'transmitter', newHardwareId: replace }] }
   : { endpointId, action: 'inspect_test', issueCode: code, notes: 'Inspected and tested on site.' };
 
+/** A few price-list rows and two registry models (one current, one obsolete) so the equipment pages have a story. */
+async function seedEquipment(db: Db) {
+  const add = async (name: string, component: string, partType: string, price: number, partNumber: string, notes: string | null = null) =>
+    (await db.query<{ id: string }>(`INSERT INTO catalog_item (name,kind,component,price,effective_from,part_type,vendor,part_number,notes,source) VALUES ($1,'part',$2,$3,'2026-01-01',$4,'NextCentury',$5,$6,'inventory') RETURNING id`,
+      [name, component, price, partType, partNumber, notes])).rows[0].id;
+  const tr4 = await add('Next Century Transciever', 'transmitter', 'Transmitter', 66.5, 'NC-TR4');
+  await add('Next Century Transciever for OUTDOOR applications', 'transmitter', 'Transmitter', 117.25, 'NC-TR4-X');
+  const bat = await add('CR18505 Transmitter Batteries for TR4', 'battery', 'Battery', 9.1, 'NC-BAT4-25', '25 pack (TR4, RR4, TR4X, & RR4TR)');
+  const { saveModel } = await import('../equipment/registry');
+  const m4 = await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR4', kind: 'transmitter', readingSystem: 'Next Century', services: ['WS'], aliases: ['NC-TR4'], partItemId: tr4, batteryItemId: bat, batteryLifeYears: 10 });
+  await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR201', kind: 'transmitter', readingSystem: 'Next Century', services: ['WS'], status: 'obsolete', replacedBy: m4, notes: 'No longer made; replace with TR4 when one fails.' });
+}
+
 export async function buildDemo(db: Db): Promise<{ properties: number }> {
   await createUser(db, { email: DEMO_LOGIN.email, name: 'Demo Admin', role: 'admin', password: DEMO_LOGIN.password, mustChangePassword: false });
+  await seedEquipment(db);
   for (const s of SPECS) {
     const p = await setupProperty(db, s);
     // The three scenarios below run per property.

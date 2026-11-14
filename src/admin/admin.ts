@@ -121,7 +121,7 @@ const ACTION_LABEL: Record<string, string> = {
   login: 'Signed in', login_failed: 'Failed sign-in', password_changed: 'Changed password', setting_changed: 'Changed a setting',
   audit_override: 'Changed an audit result', audit_override_cleared: 'Cleared an audit change', catalog_import: 'Imported catalog prices',
   closeout_approved: 'Approved client notes', event_corrected: 'Corrected a service entry', invoice_ref_recorded: 'Recorded an invoice reference',
-  price_reconfirmed: 'Reconfirmed prices', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map',
+  price_reconfirmed: 'Reconfirmed prices', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map', service_added: 'Added a service code', service_changed: 'Changed a service code', equipment_added: 'Added an equipment model', equipment_changed: 'Changed an equipment model',
 };
 export interface ActivityRow { id: string; at: string; who: string | null; action: string; label: string; entity: string | null; entityId: string | null; detail: string }
 

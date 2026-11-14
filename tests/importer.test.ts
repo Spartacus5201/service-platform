@@ -38,7 +38,8 @@ describe('importer: converters', () => {
     expect(convert('text', '  ')).toEqual({ ok: true, value: null });
   });
   it('never guesses a service', () => {
-    expect(['All Water', 'Hot Water', 'Gas', 'Electric', 'ws'].map(serviceCode)).toEqual(['WS', 'WS', 'GS', 'EL', 'WS']);
+    expect(['All Water', 'Hot Water', 'Gas', 'Electric', 'ws', 'Chilled Water', 'HVAC', 'WA'].map((x) => serviceCode(x))).toEqual(['WS', 'HW', 'GS', 'EL', 'WS', 'CW', 'HV', 'WA']);
+    expect(serviceCode('Hot')).toBeNull();   // partial words are never guessed
     expect(serviceCode('Irrigation')).toBeNull();
   });
 });

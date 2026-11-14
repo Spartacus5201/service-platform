@@ -2,7 +2,7 @@
 // Every row ends up in exactly one place: rows (kept), empty, excluded (by a person) or rejected (with reasons),
 // and every value that could not be read is listed, so the preview can show the whole story.
 import type { Cell, Grid, Sheet } from '../parsers/common';
-import { convert } from './convert';
+import { convert, type ConvertContext } from './convert';
 import { normHeader, normValue, type Layout, type Overrides } from './layout';
 import { TARGETS, type Values } from './targets';
 
@@ -35,7 +35,7 @@ export function findHeaderRow(rows: Grid, layout: Layout): number {
   return -1;
 }
 
-export function applyLayout(sheet: Sheet, layout: Layout, o: Overrides = {}): Applied {
+export function applyLayout(sheet: Sheet, layout: Layout, o: Overrides = {}, ctx?: ConvertContext): Applied {
   const target = TARGETS[layout.target];
   const out: Applied = { layout: { id: layout.id, name: layout.name, version: layout.version, target: layout.target }, sheet: sheet.name, headerRow: 0,
     columns: [], unused: [], rows: [], empty: [], excluded: [], rejected: [], problems: [], blocking: [] };
@@ -89,7 +89,7 @@ export function applyLayout(sheet: Sheet, layout: Layout, o: Overrides = {}): Ap
       const map = { ...(rule?.lookup ?? {}), ...(o.lookups?.[col.field] ?? {}) };
       const hit = text !== '' ? Object.entries(map).find(([k]) => normValue(k) === normValue(text)) : undefined;
       if (hit) v = hit[1];
-      const c = convert(f.type, v);
+      const c = convert(f.type, v, ctx);
       if (!c.ok) {
         if (col.required) { reasons.push(`${f.label}: ${c.error}`); out.problems.push({ row: rowNo, field: f.key, raw: text, message: c.error, severity: 'error' }); }
         else { values[f.key] = null; out.problems.push({ row: rowNo, field: f.key, raw: text, message: `${c.error}; left blank`, severity: 'warning' }); }

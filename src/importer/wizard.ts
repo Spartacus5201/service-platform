@@ -8,6 +8,10 @@ import { BUILTIN } from './builtin';
 import { matchLayouts, preview, type Preview } from './index';
 import { normHeader, type ColumnRule, type Layout, type Overrides, type Target } from './layout';
 import { TARGETS } from './targets';
+import { listServices } from '../lists/services';
+import type { ConvertContext } from './convert';
+
+const ctxOf = async (q: Q): Promise<ConvertContext> => ({ services: await listServices(q, { includeRetired: true }) });
 
 type Q = Pick<Db, 'query'>;
 export class WizardError extends Error {}
@@ -159,7 +163,7 @@ export async function wizardView(db: Db, id: string): Promise<WizardView> {
   const base = st.layoutId ? await getLayout(db, st.layoutId, st.layoutVersion) : null;
   const target = base?.target ?? st.target ?? null;
   let pv: Preview | null = null;
-  if (target) pv = preview(sheets, base ?? blankLayout(target), { ...st.overrides, sheet: sheet.name, headerRow });
+  if (target) pv = preview(sheets, base ?? blankLayout(target), { ...st.overrides, sheet: sheet.name, headerRow }, await ctxOf(db));
   const problemValues: WizardView['problemValues'] = {};
   for (const p of pv?.problems ?? []) {
     if (!p.raw || p.message.startsWith('same as')) continue;
@@ -225,7 +229,7 @@ export async function commitWizard(db: Db, id: string, o: { saveAs?: string | nu
     save = true;
     // The saved map, on its own, must read this file exactly as the preview did.
     const sheets = await readSheets(u.bytes);
-    const again = preview(sheets, layout, { sheet: v.sheet, headerRow: v.headerRow, excludeRows: v.state.overrides.excludeRows });
+    const again = preview(sheets, layout, { sheet: v.sheet, headerRow: v.headerRow, excludeRows: v.state.overrides.excludeRows }, await ctxOf(db));
     if (!again.importable || JSON.stringify({ ...again.parsed, warnings: [] }) !== JSON.stringify({ ...v.preview.parsed, warnings: [] }))
       throw new WizardError('The map to be saved would read this file differently from the preview. Nothing was imported. Check columns that share a header name.');
   }
@@ -259,7 +263,7 @@ export async function setColumns(db: Db, id: string, choices: Record<string, { c
   let resolved: Record<string, number | null> = {};
   if (base) {
     const sheets = await readSheets(u.bytes);
-    const p = preview(sheets, base, { sheet: st.overrides.sheet, headerRow: st.overrides.headerRow });
+    const p = preview(sheets, base, { sheet: st.overrides.sheet, headerRow: st.overrides.headerRow }, await ctxOf(db));
     resolved = Object.fromEntries(p.columns.map((c) => [c.field, c.column]));
   }
   const columns: Record<string, number | null> = {}; const constants: Record<string, string> = {};

@@ -16,6 +16,7 @@ import { saveSystemNotesAction, updateProperty } from '../../actions';
 import { BRANDS, MILESTONES, PRICE_ITEMS, UTILITIES, equipmentText, getPropertyPrices, getSystemNotes } from '@/src/documents/systemnotes';
 import { Badge, Flash, one, us, type SP } from '../../ui';
 import ImportForm from './import-form';
+import { inField } from '@/src/equipment/registry';
 
 const KIND: Record<string, string> = { auto_audit: 'Auto Audit', manual_audit: 'Manual Audit', occupancy: 'Occupancy', unit_directory: 'Unit Directory', cim_nextcentury: 'CIM', cim_inovonics: 'CIM (Inovonics)', psr: 'PSR' };
 
@@ -38,6 +39,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const lowCount = canDocs ? (await lowBatteryDevices(db, { propertyId: id })).length : 0;
   const stages = latest ? countStages(await stagedLines(db, latest.id, today())) : null;
   const vacant = units.filter((u) => u.occupancyKnown && !u.moveInOn).length;
+  const equipment = await inField(db, id);
   const TABS = [['overview', 'Overview'], ...(canDocs ? [['work', 'Jobs & documents']] : []), ['audits', 'Audits & imports'], ['units', 'Units'], ...(canDocs || canImport ? [['settings', 'Settings']] : [])] as [string, string][];
   const tab = TABS.some(([k]) => k === one(sp.tab)) ? one(sp.tab)! : 'overview';
   const q = (one(sp.q) ?? '').trim().toLowerCase();
@@ -63,6 +65,13 @@ export default async function PropertyPage({ params, searchParams }: { params: P
       {canInvoice && <p><a className="btn secondary" href={`/properties/${id}/invoicing`}>Invoicing →</a></p>}
       {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
 
+      {equipment.length > 0 && (
+        <p className="small">Equipment in the field: {equipment.map((e, i) => (
+          <span key={e.code + e.kind}>{i > 0 && ' · '}
+            {e.model ? <a href={`/equipment/${e.model.id}`}>{e.model.manufacturer} {e.code}</a> : <>{e.code} {can(s.role, 'edit_prices') ? <a href={`/equipment/new?model=${encodeURIComponent(e.code)}&kind=${e.kind}`}>(not in registry: add)</a> : '(not in registry)'}</>} ×{e.devices}
+            {e.model && e.model.status !== 'current' && <> <Badge tone={e.model.status === 'obsolete' ? 'bad' : 'warn'}>{e.model.status === 'obsolete' ? 'obsolete' : 'phasing out'}{e.model.replacedByLabel ? ` → ${e.model.replacedByLabel}` : ''}</Badge></>}
+          </span>))}</p>
+      )}
       {canDocs && jobs.length > 0 && (<>
         <h2>Open jobs</h2>
         <ul>{jobs.map((j) => <li key={j.id}><a href={`/jobs/${j.id}`}>#{j.number} {j.title}</a> <StageBadge stage={j.stage} /></li>)}</ul>

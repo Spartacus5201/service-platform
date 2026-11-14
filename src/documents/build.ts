@@ -1,5 +1,6 @@
 // Document builder: WA, Proposal, RFM. Drafts are editable; issuing freezes a version; edits after that start the next version.
 import type { Db } from '../db';
+import { replacementFor } from '../equipment/registry';
 import { auditLines, needsAction } from '../queries/audit';
 import { mergeFields, type FrozenContent, type FrozenLine } from './render';
 import { renderPdf } from './pdf';
@@ -122,10 +123,17 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
           const bat = await batteryFor(tx, l.lowBattery!.model, input.createdOn, pm);
           part = bat.price; itemId = bat.itemId; component = 'battery';
         }
+        let label = workLabel(l.code, l.recommendation);
+        // The equipment registry knows the installed model: quote its replacement part (or its successor's, when obsolete).
+        if (l.recommendation.action === 'Needs Service' && (component === 'transmitter' || component === 'meter')) {
+          const rep = await replacementFor(tx, l.endpointId, component, input.createdOn);
+          if (rep?.part) { itemId = rep.part.id; if (own === undefined && rep.part.price !== null) part = rep.part.price; }
+          if (rep?.note) label = `${label} (${rep.note})`;
+        }
         await tx.query(
           `INSERT INTO document_line (version_id,endpoint_id,audit_reading_id,issue_code,description,catalog_item_id,quantity,unit_price,labor_price,labor_covered,part_covered,component,include)
            VALUES ($1,$2,$3,$4,$5,$6,1,$7,$12,$8,$9,$10,$11)`,
-          [ver, l.endpointId, l.readingId, l.code, workLabel(l.code, l.recommendation), itemId, part,
+          [ver, l.endpointId, l.readingId, l.code, label, itemId, part,
            l.coverage.laborCovered, l.coverage.partCovered, component, l.recommendation.action !== 'Unrecognized', labor]);
         lines++;
       }
