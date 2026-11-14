@@ -3,9 +3,10 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Db } from '../db';
+import { todayIn } from '../timezone';
 import { backupBytes, backupName } from './backup';
 
-const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const localDate = () => todayIn();          // the office's day, not the server clock's
 
 /** Write today's backup if it is not there yet, then remove the oldest beyond `keep`. Returns the file written, if any. */
 export async function backupIfDue(db: Db, dir: string, keep = 14, date = localDate()): Promise<string | null> {

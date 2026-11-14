@@ -2,6 +2,7 @@
 import { confirmIdUpdates } from '../service/verify';
 import { createHash } from 'node:crypto';
 import type { Db } from '../db';
+import { setting } from '../settings';
 import { normLabel } from '../parsers/common';
 import type { Parsed } from '../parsers';
 import type { AuditParse } from '../parsers/audit';
@@ -179,8 +180,8 @@ export async function importParsed(db: Db, propertyId: string, parsed: Parsed, o
   await db.transaction(async (tx) => {
     const batch = await one<{ id: string }>(tx,
       `INSERT INTO import_batch (property_id,kind,filename,sha256,imported_by,raw_file,purge_after)
-       VALUES ($1,$2,$3,$4,$5,$6, current_date + COALESCE((SELECT (value #>> '{}')::int FROM setting WHERE key='raw_import_retention_days'), 180)) RETURNING id`,
-      [propertyId, kind, opts.filename ?? null, sha, opts.importedBy ?? null, kind === 'unit_directory' ? null : (opts.fileBytes ?? null)]);   // the file holds resident names: keep none of it
+       VALUES ($1,$2,$3,$4,$5,$6, current_date + $7::int) RETURNING id`,
+      [propertyId, kind, opts.filename ?? null, sha, opts.importedBy ?? null, kind === 'unit_directory' ? null : (opts.fileBytes ?? null), await setting(tx, 'raw_import_retention_days')]);   // the file holds resident names: keep none of it
     res.batchId = batch!.id;
     const reg = new Registry(tx, propertyId, !!opts.createMissing);
     await reg.load();

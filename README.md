@@ -19,7 +19,7 @@ npm run users -- ./credentials.md --data .pgdata   # create logins (see Login)
 npm run build && npm start           # the web app on http://localhost:3000 (npm run dev for development)
 ```
 
-Environment: `DATA_DIR` (database folder, default `.pgdata`), `APP_TZ` (default `America/Chicago`, sets "today"), `COOKIE_SECURE=true` (set behind HTTPS), `MIGRATIONS_DIR` (only if the app is run from another folder).
+Environment: `DATA_DIR` (database folder, default `.pgdata`), `APP_TIMEZONE` (default `America/Chicago`: "today", dates in the database, times on screen and the backup day; `APP_TZ` still works), `COOKIE_SECURE` (https-only cookies by default in production; `false` for plain http), `MIGRATIONS_DIR` (only if the app is run from another folder).
 
 No Postgres install is needed: [PGlite](https://pglite.dev) runs Postgres in-process. The SQL in `db/migrations` is plain Postgres and runs unchanged on managed Postgres (add the `vector` extension there for semantic search later).
 
@@ -40,7 +40,7 @@ No Postgres install is needed: [PGlite](https://pglite.dev) runs Postgres in-pro
 ## Rules implemented
 
 - **Audit codes:** OK none; NI Needs Service if occupied; NT Needs Service; IDMM Verify ID; LOW Investigate (property) if occupied; HIGH Investigate (property); NEG Investigate (service coordinator); anything else shows Unrecognized.
-- **INT:** automated systems with ReadCount below 10 (setting) in the window need service. Manual meters (MANUAL in MeterTypeID or ManufacturerID) need service only at ReadCount 0. INT with no ReadCount is Unrecognized, never silent.
+- **INT:** an automated read with 5 or fewer reads in the window (setting "INT: maximum reads") whose last real read was at least 3 days before the audit ended (setting "INT: days since last real read") needs service, like NT. Manual meters (MANUAL in MeterTypeID or ManufacturerID) need service only at ReadCount 0. INT with no ReadCount is Unrecognized, never silent.
 - **Occupancy:** from the AutoAudit file's ServiceAddr range. First date is the move-in, and `01/01/00` there means Vacant. Second date is the prior move-out (informational). Reads and AuditResult in that file are ignored when it is imported as an occupancy file.
 - **Warranty:** install (property, one completion date, parts and labor), service labor (endpoint, any completed touch), service part (device, installed during service). Unable to Access and Unable to Complete do not count. RFM has none. Terms and the 30-day Expiring window are settings.
 - **Retention:** raw import files are discarded 180 days after import (`purgeExpiredImports`). Parsed readings, service history, and notes are kept.
@@ -145,7 +145,7 @@ Service notes page → **Correct this record**. Change visit details (date, tech
 
 ## ID update record and verification
 - **ID update** (service notes page → *ID update record*): for each unit where equipment was replaced, the billing system's old values (MDID = transmitter ID, MIUID, Port, Net) beside the new ones. Port and Net are stored per unit (default 0, read from the Manual Audit's Mport/MNetAddr) and can be overridden here. *Download workbook* gives the same column layout as the existing ID Update template (FROM UBS / NEW/CHANGED INFO / QUALITY CHECK with its match formulas, plus an AMR recoup sheet). *Mark as sent to billing* freezes the rows. A later audit or CIM import that shows the new transmitter ID marks the row **confirmed** automatically.
-- **Did it work?** Each unit on a visit is Pending, Verified or Failed from later imports: an audit whose whole window is after the visit (OK = verified; NT/NI/INT/IDMM = failed; a vacant NI is fine), or a transmitter check-in after the visit for transmitter issues. A replaced transmitter whose old ID still appears in a later audit is flagged as needing the billing update. Failed units appear under **Needs follow-up** on the property page when no later service has happened. Code: `src/service/idupdate.ts`, `src/service/verify.ts`.
+- **Did it work?** Each unit on a visit is Pending, Verified or Failed from later imports: an audit whose whole window is after the visit, judged by the same rules and reviewer changes as the audit page (no action = verified; Needs Service or Verify ID = failed; anything else is a new item for the property, not a failed repair), or a transmitter check-in after the visit for transmitter issues. A replaced transmitter whose old ID still appears in a later audit is flagged as needing the billing update. Failed units appear under **Needs follow-up** on the property page when no later service has happened. Code: `src/service/idupdate.ts`, `src/service/verify.ts`.
 
 ## Demo
 `npm run demo` builds a synthetic dataset in `.pgdata-demo`; `npm run demo:start` serves it. See docs/DEMO.md.

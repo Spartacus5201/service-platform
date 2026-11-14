@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { appTimeZone } from '@/src/timezone';
 
 export type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'gray';
 export const Badge = ({ tone = 'gray', children }: { tone?: Tone; children: ReactNode }) => <span className={`badge b-${tone}`}>{children}</span>;
@@ -35,7 +36,7 @@ export const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0
 /** Dates on screen in US format (11/13/2026), matching the PDFs. Accepts ISO dates or timestamps. */
 export const us = (d: string | null | undefined) => { if (!d) return ''; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d); return m ? `${m[2]}/${m[3]}/${m[1]}` : d; };
 export const daysSince = (d: string, today: string) => Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 86400000));
-/** Timestamps from the database are UTC; show them in the office's time zone (APP_TIMEZONE, default US Central). */
-const TZ = () => process.env.APP_TIMEZONE || 'America/Chicago';
+/** Show database timestamps in the office's time zone (APP_TIMEZONE, default US Central). */
+const TZ = () => appTimeZone();
 export const localDate = (ts: string | null | undefined) => { if (!ts) return ''; const d = new Date(ts.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')); return Number.isNaN(d.getTime()) ? us(ts) : d.toLocaleDateString('en-US', { timeZone: TZ(), month: '2-digit', day: '2-digit', year: 'numeric' }); };
 export const localTime = (ts: string | null | undefined) => { if (!ts) return ''; const d = new Date(ts.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')); return Number.isNaN(d.getTime()) ? ts : `${localDate(ts)} ${d.toLocaleTimeString('en-US', { timeZone: TZ(), hour: 'numeric', minute: '2-digit' })}`; };

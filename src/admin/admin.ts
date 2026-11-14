@@ -1,6 +1,7 @@
 // User and settings administration. Kept free of web code so it is testable and reusable.
 import { randomInt } from 'node:crypto';
 import type { Db } from '../db';
+import { readSettings } from '../settings';
 import { hashPassword, type Role } from '../auth/auth';
 
 export class AdminError extends Error {}
@@ -90,8 +91,10 @@ export const SETTINGS: SettingSpec[] = [
 ];
 
 export async function getSettings(db: Db): Promise<Record<string, number>> {
-  const r = await db.query<{ key: string; value: unknown }>(`SELECT key,value FROM setting`);
-  return Object.fromEntries(r.rows.map((x) => [x.key, Number(x.value)]));
+  // What the settings page shows: what is in effect, defaults included ("Audit every" 0 = not set, shown blank).
+  const s: Record<string, number> = { ...(await readSettings(db)) };
+  if (!s.audit_interval_days) delete s.audit_interval_days;
+  return s;
 }
 
 export async function saveSettings(db: Db, by: string | null, input: Record<string, string>): Promise<string[]> {

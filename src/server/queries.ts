@@ -1,4 +1,5 @@
 import type { Db } from '../db';
+import { setting } from '../settings';
 
 export interface PropertyRow { id: string; class_id: string; name: string; installed_by_us: boolean; units: number; last_audit: string | null; docs: number; due: string | null }
 
@@ -9,7 +10,7 @@ export async function listProperties(db: Db, o: { q?: string } = {}): Promise<Pr
             (SELECT max(imported_at)::date::text FROM import_batch i WHERE i.property_id=p.id AND i.kind IN ('auto_audit','manual_audit')) last_audit,
             (SELECT count(*) FROM document d WHERE d.property_id=p.id) docs
        FROM property p ${o.q?.trim() ? `WHERE p.name ILIKE $1 OR p.class_id ILIKE $1 OR COALESCE(p.address,'') ILIKE $1` : ''} ORDER BY p.name`, o.q?.trim() ? [`%${o.q.trim().replace(/[%_]/g, '')}%`] : []);
-  const every = Number((await db.query<{ value: unknown }>(`SELECT value FROM setting WHERE key='audit_interval_days'`)).rows[0]?.value);
+  const every = await setting(db, 'audit_interval_days');
   return r.rows.map((x) => ({ ...x, units: Number(x.units), docs: Number(x.docs),
     due: every > 0 && x.last_audit ? new Date(Date.parse(x.last_audit) + every * 86400000).toISOString().slice(0, 10) : null }));
 }

@@ -8,6 +8,7 @@
 //   pm_battery_price (battery price when the catalog has no battery for the transmitter model, default 9.10).
 import type { Db } from '../db';
 import { CATALOG_AS_OF } from '../sql';
+import { readSettings } from '../settings';
 
 type Q = Pick<Db, 'query'>;
 export const PM_DESCRIPTION = 'Preventative Maintenance - Transmitter Battery Replacement';
@@ -21,11 +22,12 @@ export interface LowBattery {
 
 export interface PmSettings { code: string; warranty: 'part' | 'never'; threshold: number; waThreshold: number; batteryPrice: number }
 export async function pmSettings(q: Q): Promise<PmSettings> {
-  const rows = (await q.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting WHERE key IN ('pm_code','pm_warranty','pm_battery_threshold','pm_wa_threshold','pm_battery_price')`)).rows;
+  // pm_code and pm_warranty are text settings; the numbers come from the one settings table.
+  const rows = (await q.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting WHERE key IN ('pm_code','pm_warranty')`)).rows;
   const get = (k: string) => rows.find((r) => r.key === k)?.value;
-  const n = (k: string, d: number) => { const x = Number(get(k)); return get(k) !== undefined && Number.isFinite(x) ? x : d; };
   const code = typeof get('pm_code') === 'string' && (get('pm_code') as string).trim() ? (get('pm_code') as string).trim() : 'PM';
-  return { code, warranty: get('pm_warranty') === 'never' ? 'never' : 'part', threshold: n('pm_battery_threshold', 25), waThreshold: n('pm_wa_threshold', 1), batteryPrice: n('pm_battery_price', 9.1) };
+  const s = await readSettings(q);
+  return { code, warranty: get('pm_warranty') === 'never' ? 'never' : 'part', threshold: s.pm_battery_threshold, waThreshold: s.pm_wa_threshold, batteryPrice: s.pm_battery_price };
 }
 
 /**

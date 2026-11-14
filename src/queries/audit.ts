@@ -1,18 +1,14 @@
 import type { Db } from '../db';
 import { touchesFor, serviceInstalls, partDate } from '../service/coverage';
 import { recommend, normalizeCode, type Recommendation, type AuditSettings } from '../rules/audit';
-import { coverage, type Coverage, type WarrantySettings, DEFAULT_WARRANTY } from '../rules/warranty';
+import { coverage, type Coverage, type WarrantySettings } from '../rules/warranty';
+import { readSettings } from '../settings';
 
 export async function loadSettings(db: Pick<Db, 'query'>): Promise<{ audit: AuditSettings; warranty: WarrantySettings }> {
-  const r = await db.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting`);
-  const s = Object.fromEntries(r.rows.map((x) => [x.key, Number(x.value)]));
+  const s = await readSettings(db);
   return {
-    audit: { intReadThreshold: s.int_read_threshold ?? 5, intStaleDays: s.int_stale_days ?? 3 },
-    warranty: {
-      installMonths: s.warranty_months_install ?? DEFAULT_WARRANTY.installMonths,
-      serviceMonths: s.warranty_months_service ?? DEFAULT_WARRANTY.serviceMonths,
-      expiringDays: s.expiring_window_days ?? DEFAULT_WARRANTY.expiringDays,
-    },
+    audit: { intReadThreshold: s.int_read_threshold, intStaleDays: s.int_stale_days },
+    warranty: { installMonths: s.warranty_months_install, serviceMonths: s.warranty_months_service, expiringDays: s.expiring_window_days },
   };
 }
 

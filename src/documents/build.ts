@@ -2,6 +2,7 @@
 import type { Db } from '../db';
 import { replacementFor } from '../equipment/registry';
 import { CATALOG_AS_OF } from '../sql';
+import { setting } from '../settings';
 import { propertyPartPrice } from './pricing';
 import { auditLines, needsAction } from '../queries/audit';
 import { mergeFields, type FrozenContent, type FrozenLine } from './render';
@@ -87,8 +88,7 @@ async function suggestItem(q: Q, component: string | null, asOf: string) {
 
 /** Default labor charge per unit (setting labor_rate, $85 unless changed). */
 export async function laborRate(q: Q): Promise<number> {
-  const r = await one<{ value: unknown }>(q, `SELECT value FROM setting WHERE key='labor_rate'`);
-  const n = Number(r?.value); return Number.isFinite(n) ? n : 85;
+  return setting(q, 'labor_rate');
 }
 
 export async function createDocument(db: Db, input: NewDocument): Promise<Created> {
@@ -303,6 +303,5 @@ function addDays(iso: string, n: number): string {
   const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
 }
 async function settingsDays(db: Q): Promise<{ quoteDays: number }> {
-  const r = await one<{ value: unknown }>(db, `SELECT value FROM setting WHERE key='quote_valid_days'`);
-  return { quoteDays: r ? Number(r.value) : 30 };
+  return { quoteDays: await setting(db, 'quote_valid_days') };
 }

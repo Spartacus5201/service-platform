@@ -6,6 +6,7 @@ import type { Db } from '../db';
 import { closeoutData, type Closeout } from './closeout';
 import { verifyVisit } from './verify';
 import { RESULT_LABEL } from './phrases';
+import { setting, SETTING_DEFAULTS } from '../settings';
 
 type Q = Pick<Db, 'query'>;
 export type AarOutcome = 'fixed' | 'still_failing' | 'new_problem' | 'revisit' | 'awaiting_audit';
@@ -30,8 +31,7 @@ export interface Aar {
 
 /** Days after a visit when the post-service audit is due (setting post_audit_days, 7 unless changed). */
 export async function postAuditDays(q: Q): Promise<number> {
-  const r = (await q.query<{ value: unknown }>(`SELECT value FROM setting WHERE key='post_audit_days'`)).rows[0];
-  const n = Number(r?.value); return Number.isFinite(n) && n > 0 ? n : 7;
+  const n = await setting(q, 'post_audit_days'); return n > 0 ? n : SETTING_DEFAULTS.post_audit_days;
 }
 export const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
 
