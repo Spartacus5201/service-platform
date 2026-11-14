@@ -14,21 +14,23 @@ Facts that change over time are data people edit in the app; the workflow stays 
 2. **Editable lists**: (service codes done) audit result codes and their meaning, invoicing codes, visit actions, device types, milestone types move from fixed code values to short lists in Admin. Retire, never delete, so old audits and documents still read correctly.
 3. **Rules as tables, tested before saving**: which component each audit code points to and whether it needs service become an editable table. Before a change is saved, the last real audits are re-run and the differences shown.
 4. **Setup export and import**: the whole setup (lists, equipment, rules, layouts, prices, clauses, settings) as one file, so it moves from laptop to company server unchanged and can be restored. "Effective from" dates on prices and rules so any past document can be explained.
-5. **Remaining importer layouts**: audit reports, CIM and each new data set as saved maps, each with a sample file and test; then retire the hand-written parsers one at a time. Paced by the sample data sets.
-6. **Smaller items** (done: activity log, properties filter, next audit due). Left: manual theme toggle, resident notice per unit, limit an audit to a property-supplied unit list, upload several photos at once, accuracy report from the real audits.
-7. **Photo storage**: photos stay in the app (Salesforce is read-only). Move them out of the database into a photo folder, with a retention choice: keep all, or only the most recent per unit and service (never removed while a visit is open).
-8. **Custom fields, if needed**: extra fields on properties, units or equipment, defined in Admin, for display, search and export only (never used by rules).
-9. **Waiting on IT**: managed Postgres, single sign-on, hosting on the company server, Salesforce credentials (`SF_MODE=live`). See `IT-QUESTIONS.md`, `SALESFORCE-SETUP.md`, `RUNNING.md`.
+5. **Inventory and stock take**: Service Platform as the home for inventory (the workbook stays the master until a count cycle agrees). Locations (main office, office install stock, storage units with their technicians, temporary), movements (receive, transfer, reserve, use on a visit, return, adjust), stock on hand worked out from movements, and a stock take for annual counts (frozen expected quantities, blind count, review, approved adjustments, count log). Plan: `INVENTORY.md`.
+6. **Remaining importer layouts**: audit reports, CIM and each new data set as saved maps, each with a sample file and test; then retire the hand-written parsers one at a time. Paced by the sample data sets.
+7. **Smaller items** (done: activity log, properties filter, next audit due). Left: manual theme toggle, resident notice per unit, limit an audit to a property-supplied unit list, upload several photos at once, accuracy report from the real audits.
+8. **Photo storage**: photos stay in the app (Salesforce is read-only). Move them out of the database into a photo folder, with a retention choice: keep all, or only the most recent per unit and service (never removed while a visit is open).
+9. **Custom fields, if needed**: extra fields on properties, units or equipment, defined in Admin, for display, search and export only (never used by rules).
+10. **Waiting on IT**: managed Postgres, single sign-on, hosting on the company server, Salesforce credentials (`SF_MODE=live`). See `IT-QUESTIONS.md`, `SALESFORCE-SETUP.md`, `RUNNING.md`.
 
 ## Housekeeping (done along the way)
-- Photos are stored inside the database; fine at current volume, but backups grow with them. Moving them to a folder is item 7.
+- Photos are stored inside the database; fine at current volume, but backups grow with them. Moving them to a folder is item 8.
 - The Docker image is written but not yet built here (no Docker engine in this environment); first `docker compose up` on the homelab is its test.
 - Today recalculates every property's latest audit on each page load. Fine for a demo; save the needs-action count when an audit is imported before this goes past a few dozen properties.
 - Time zone: the activity log and import maps show times in `APP_TIMEZONE` (default US Central). Dates the database works out itself ("imported on", "approved on") use its own day, which is UTC in the embedded database, so work done after 6 pm Central can show the next day. Fix by setting the database time zone at startup; check with IT's server settings.
 - A user can approve their own client notes. Fine for four users; add a setting to require a second person if management asks.
 
 ## Open questions
-- Equipment registry: models are added from "In the field but not in the registry" on the Equipment page; catalog parts that name the model are offered as suggestions. A model with no battery set uses the default battery price ($9.10). TR201, seen in the real Crown Court report, is not in the Inventory sheet: its status and replacement need deciding.
+- Equipment registry: models are added from "In the field but not in the registry" on the Equipment page; catalog parts that name the model are offered as suggestions. A model with no battery set uses the default battery price ($9.10). The registry ships with TR4 (current) and TR201 (obsolete, replaced by TR4). Meters are tracked too: a meter's model comes from the Meter Type on status reports.
+- Batteries: a new transmitter comes with a battery fitted, so a transmitter replacement never adds a battery to the bring list (or, later, takes one from stock).
 - Hot water in reports: "Hot Water" in an AMR or CIM report is now read as HW (it was WS). If billing files hot water meters as WS at some property, those units show under Import problems instead of importing.
 - Ray property (AMR Status Report, no unit directory): how zero-usage units that are not NI were excluded.
 - Unit 3205 at one test property is a data inconsistency, not a rule problem.

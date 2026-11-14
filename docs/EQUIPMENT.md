@@ -12,6 +12,10 @@ What uses it:
 - **Property overview**: equipment in the field with counts, obsolete and phasing-out models flagged.
 - **Equipment page**: every model with its parts, prices and how many are in the field, plus model codes seen in imports that are not in the registry yet, each with an Add button. The add form suggests catalog parts and batteries that name the model (in the name, part number or notes); a person picks.
 
+Starter models (shipped with the app): Next Century TR4 (current, comes with a battery fitted) and TR201 (obsolete, replaced by TR4). Meters are tracked the same way: a meter's model is learned from the Meter Type on status reports (only filled in when the meter has none on file).
+
+A new transmitter comes with a battery fitted: replacing a transmitter never adds a battery to the bring list. Only PM battery lines and stopped transmitters with a flat battery do.
+
 Rules: one code (model or other name) means one model of a kind; a replacement chain cannot loop; models are changed, never deleted; every change is in the activity log and on the model's page.
 
 ## Service codes (Admin → Service codes)

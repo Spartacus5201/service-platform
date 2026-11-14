@@ -120,8 +120,12 @@ async function upsertDevice(q: Q, propertyId: string, kind: string, hardwareId: 
 
 /** Meters carry no readable ID, so each endpoint gets one placeholder meter. */
 async function ensurePlaceholderMeter(q: Q, propertyId: string, endpointId: string, installedOn: string | null, origin: string, model?: string | null, serial?: string | null) {
-  const has = await one(q, `SELECT 1 FROM installation i JOIN device d ON d.id=i.device_id WHERE i.endpoint_id=$1 AND d.kind='meter' AND i.removed_on IS NULL AND d.status='active'`, [endpointId]);
-  if (has) return;
+  const has = await one<{ id: string }>(q, `SELECT d.id FROM installation i JOIN device d ON d.id=i.device_id WHERE i.endpoint_id=$1 AND d.kind='meter' AND i.removed_on IS NULL AND d.status='active'`, [endpointId]);
+  if (has) {
+    // A meter already on file with no model learns it from the first report that names it (never overwritten).
+    if (model) await q.query(`UPDATE device SET model=$2 WHERE id=$1 AND COALESCE(trim(model),'')=''`, [has.id, model]);
+    return;
+  }
   const d = await one<{ id: string }>(q,
     `INSERT INTO device (property_id,kind,model,serial_number,is_placeholder) VALUES ($1,'meter',$2,$3,$4) RETURNING id`,
     [propertyId, model ?? null, serial ?? null, !serial]);

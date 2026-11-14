@@ -57,9 +57,8 @@ async function seedEquipment(db: Db) {
   const tr4 = await add('Next Century Transciever', 'transmitter', 'Transmitter', 66.5, 'NC-TR4');
   await add('Next Century Transciever for OUTDOOR applications', 'transmitter', 'Transmitter', 117.25, 'NC-TR4-X');
   const bat = await add('CR18505 Transmitter Batteries for TR4', 'battery', 'Battery', 9.1, 'NC-BAT4-25', '25 pack (TR4, RR4, TR4X, & RR4TR)');
-  const { saveModel } = await import('../equipment/registry');
-  const m4 = await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR4', kind: 'transmitter', readingSystem: 'Next Century', services: ['WS'], aliases: ['NC-TR4'], partItemId: tr4, batteryItemId: bat, batteryLifeYears: 10 });
-  await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR201', kind: 'transmitter', readingSystem: 'Next Century', services: ['WS'], status: 'obsolete', replacedBy: m4, notes: 'No longer made; replace with TR4 when one fails.' });
+  // TR4 and TR201 come with the starter registry (migration 023); the demo links the TR4's part and battery.
+  await db.query(`UPDATE equipment_model SET part_item_id=$1, battery_item_id=$2, battery_life_years=10 WHERE model='TR4'`, [tr4, bat]);
 }
 
 export async function buildDemo(db: Db): Promise<{ properties: number }> {

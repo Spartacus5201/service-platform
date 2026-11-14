@@ -40,9 +40,22 @@ describe('service codes', () => {
   }, 60000);
 });
 
+const fresh = async (db: Db) => { await db.query(`UPDATE equipment_model SET replaced_by=NULL`); await db.query(`DELETE FROM equipment_model`); };
+
 describe('equipment registry', () => {
-  it('validates models, codes and replacement chains', async () => {
+  it('ships with TR4 current and TR201 obsolete, replaced by TR4', async () => {
     const { db } = await world();
+    const all = await listModels(db);
+    expect(findModel(all, 'TR201')).toMatchObject({ status: 'obsolete', replacedByLabel: 'Next Century TR4' });
+    expect(findModel(all, 'nc-tr4')).toMatchObject({ model: 'TR4', status: 'current' });
+  }, 60000);
+  it('never adds a battery to the bring list for a new transmitter (it comes with one)', async () => {
+    const { bringList } = await import('../src/documents/systemnotes');
+    const notes = { equipment: [], transmitterDevice: 'Next Century TR4', meterDevice: null } as unknown as Parameters<typeof bringList>[0];
+    expect(bringList(notes, [{ component: 'transmitter', quantity: 2, include: true }])).toEqual([{ qty: 2, device: 'Next Century TR4' }]);
+  });
+  it('validates models, codes and replacement chains', async () => {
+    const { db } = await world(); await fresh(db);
     const tr4 = await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR4', kind: 'transmitter', aliases: ['NC-TR4'] });
     await expect(saveModel(db, null, { manufacturer: 'Other', model: 'nc tr4', kind: 'transmitter' })).rejects.toThrow(/already means Next Century TR4/);
     await expect(saveModel(db, null, { manufacturer: 'Next Century', model: 'tr4', kind: 'transmitter' })).rejects.toThrow(/already/);
@@ -55,7 +68,7 @@ describe('equipment registry', () => {
   }, 60000);
 
   it('prices batteries and replacements from the model, following obsolete models to their replacement', async () => {
-    const { db, ep } = await world();
+    const { db, ep } = await world(); await fresh(db);
     await db.query(`INSERT INTO catalog_item (name,kind,component,price,effective_from) VALUES ('Transmitter','part','transmitter',85.00,'2026-01-01'),('Labor, per visit','labor',NULL,125.00,'2026-01-01')`);
     const c = await catalog(db);
     const tr4 = await saveModel(db, null, { manufacturer: 'Next Century', model: 'TR4', kind: 'transmitter', partItemId: c.tr4, batteryItemId: c.bat });
@@ -95,5 +108,8 @@ describe('equipment registry', () => {
     expect(suggestParts(await catalogOptions(db, ['battery']), ['TR201'])).toEqual([]);
     expect(suggestParts(await catalogOptions(db, ['transmitter']), ['TR4X']).map((p) => p.id)).toEqual([c.tr4x]);   // vendor prefix on the part number
     expect(suggestParts(await catalogOptions(db, ['battery']), ['TR4X']).map((p) => p.id)).toEqual([c.bat]);          // named in the notes
+    const poly = await c.add('Minomess 130  Poly', 'meter', 37.98, '137145');
+    await c.add('Minomess 130  Brass', 'meter', 37.98, '137142');
+    expect(suggestParts(await catalogOptions(db, ['meter']), ['Minomess 130 Poly']).map((p) => p.id)).toEqual([poly]);   // every word must match
   }, 60000);
 });

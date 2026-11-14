@@ -208,7 +208,12 @@ export function suggestParts(options: CatalogOption[], codes: string[]): Catalog
   const want = new Set(codes.map(normCode).filter(Boolean));
   // A part number may carry a vendor prefix: NC-TR4-X is the TR4X.
   const pn = (o: CatalogOption) => [...want].some((c) => normCode(o.partNumber).endsWith(c));
-  const hits = options.filter((o) => !o.obsolete && (pn(o) || [o.name, o.partNumber, o.notes].some((t) => tokens(t).some((x) => want.has(x)))));
-  const extra = (o: CatalogOption) => tokens(o.partNumber ?? o.name).filter((x) => !want.has(x)).length;
+  // A code of several words ("Minomess 130 Poly") matches when every word is in the part's name, number or notes.
+  const multi = codes.map(tokens).filter((t) => t.length > 1);
+  const words = (o: CatalogOption) => new Set([o.name, o.partNumber, o.notes].flatMap(tokens));
+  const hits = options.filter((o) => !o.obsolete && (pn(o) || [o.name, o.partNumber, o.notes].some((t) => tokens(t).some((x) => want.has(x)))
+    || multi.some((t) => { const w = words(o); return t.every((x) => w.has(x)); })));
+  const all = new Set([...want, ...multi.flat()]);
+  const extra = (o: CatalogOption) => tokens(o.partNumber && multi.length === 0 ? o.partNumber : o.name).filter((x) => !all.has(x)).length;
   return hits.sort((a, b) => extra(a) - extra(b) || a.name.localeCompare(b.name));
 }
