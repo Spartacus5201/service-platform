@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { openDb } from '../src/db';
 import { authenticate, createUser } from '../src/auth/auth';
-import { addUser, resetPassword, setRole, setActive, saveSettings, getSettings, listUsers, tempPassword, AdminError, rawFileStats } from '../src/admin/admin';
+import { setUserRoles } from '../src/admin/roles';
+import { addUser, resetPassword, setActive, saveSettings, getSettings, listUsers, tempPassword, AdminError, rawFileStats } from '../src/admin/admin';
 import { loadSettings } from '../src/queries/audit';
 import { importParsed, purgeExpiredImports } from '../src/import/commit';
 import { parseAutoAudit } from '../src/parsers/audit';
@@ -12,31 +13,32 @@ describe('admin', () => {
   beforeEach(async () => { db = await openDb(); admin = await createUser(db, { email: 'a@x.io', name: 'A', role: 'admin', password: 'Password-1234', mustChangePassword: false }); }, 30000);
 
   it('creates a user whose temporary password works once and must be changed', async () => {
-    const r = await addUser(db, admin, { email: ' New@X.io ', name: 'New', role: 'technician' });
+    const r = await addUser(db, admin, { email: ' New@X.io ', name: 'New', roles: ['technician'] });
     expect(r.password).toHaveLength(14);
     const s = await authenticate(db, 'new@x.io', r.password);
-    expect(s).toMatchObject({ role: 'technician', mustChangePassword: true });
+    expect(s).toMatchObject({ roles: ['technician'], mustChangePassword: true });
+    expect(s!.perms['price.view']).toBeUndefined();
   });
   it('rejects bad input and duplicates', async () => {
-    await expect(addUser(db, admin, { email: 'nope', name: 'x', role: 'office' })).rejects.toBeInstanceOf(AdminError);
-    await expect(addUser(db, admin, { email: 'a@x.io', name: 'x', role: 'office' })).rejects.toThrow(/already/);
-    await expect(addUser(db, admin, { email: 'b@x.io', name: ' ', role: 'office' })).rejects.toThrow(/name/);
+    await expect(addUser(db, admin, { email: 'nope', name: 'x', roles: ['coordinator', 'billing'] })).rejects.toBeInstanceOf(AdminError);
+    await expect(addUser(db, admin, { email: 'a@x.io', name: 'x', roles: ['coordinator', 'billing'] })).rejects.toThrow(/already/);
+    await expect(addUser(db, admin, { email: 'b@x.io', name: ' ', roles: ['coordinator', 'billing'] })).rejects.toThrow(/name/);
   });
   it('resets a password and forces a change', async () => {
-    const u = await addUser(db, admin, { email: 'b@x.io', name: 'B', role: 'office' });
+    const u = await addUser(db, admin, { email: 'b@x.io', name: 'B', roles: ['coordinator', 'billing'] });
     const p = await resetPassword(db, admin, u.id);
     expect(await authenticate(db, 'b@x.io', u.password)).toBeNull();
     expect((await authenticate(db, 'b@x.io', p))?.mustChangePassword).toBe(true);
   });
   it('never leaves the system without an active admin', async () => {
-    await expect(setRole(db, admin, admin, 'office')).rejects.toThrow(/at least one/);
-    await expect(setActive(db, admin, admin, false)).rejects.toThrow(/at least one/);
-    const second = await addUser(db, admin, { email: 'c@x.io', name: 'C', role: 'admin' });
-    await setRole(db, admin, admin, 'office');                                  // fine now: another admin exists
-    await expect(setActive(db, admin, second.id, false)).rejects.toThrow(/at least one/);
+    await expect(setUserRoles(db, admin, admin, ['coordinator'])).rejects.toThrow(/nobody who can manage users/);
+    await expect(setActive(db, admin, admin, false)).rejects.toThrow(/nobody who can manage users/);
+    const second = await addUser(db, admin, { email: 'c@x.io', name: 'C', roles: ['admin'] });
+    await setUserRoles(db, admin, admin, ['coordinator', 'billing']);             // fine now: another admin exists
+    await expect(setActive(db, admin, second.id, false)).rejects.toThrow(/nobody who can manage users/);
   });
   it('deactivated users cannot sign in', async () => {
-    const u = await addUser(db, admin, { email: 'd@x.io', name: 'D', role: 'office' });
+    const u = await addUser(db, admin, { email: 'd@x.io', name: 'D', roles: ['coordinator', 'billing'] });
     await setActive(db, admin, u.id, false);
     expect(await authenticate(db, 'd@x.io', u.password)).toBeNull();
     expect((await listUsers(db)).find((x) => x.id === u.id)?.active).toBe(false);

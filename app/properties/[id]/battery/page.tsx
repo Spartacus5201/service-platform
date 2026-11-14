@@ -7,7 +7,7 @@ import { lowBatteryReport, pmSettings } from '@/src/service/battery';
 import { Badge, money, us } from '../../../ui';
 
 export default async function Battery({ params }: { params: Promise<{ id: string }> }) {
-  await requireCan('edit_documents');
+  await requireCan('audit.review');
   const { id } = await params;
   const db = await getDb();
   const p = await getProperty(db, id); if (!p) notFound();

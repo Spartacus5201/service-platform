@@ -8,7 +8,7 @@ npm install
 npm run demo          # builds .pgdata-demo with three synthetic properties
 npm run demo:start    # http://localhost:3000
 ```
-Sign in: `demo@example.test` / `Demo-Pass-2026`. Re-run `npm run demo` any time to reset.
+Sign in: `demo@example.test` / `Demo-Pass-2026` (Admin + Manager). To see what each role sees, sign in as `manager@`, `coordinator@`, `scheduler@`, `technician@` or `billing@example.test` with the same password. Re-run `npm run demo` any time to reset.
 
 ## The story
 1. **Home / Today.** One page of everything waiting on someone, each with how long it has waited: units with no WA yet, revisits, fixes that did not hold, post-service audits due, notes waiting approval, visits not yet sent for invoicing, missing invoice numbers, ID updates not sent or not confirmed, stale drafts.

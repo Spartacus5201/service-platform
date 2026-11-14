@@ -8,9 +8,9 @@ import { Flash, one, type SP } from '../ui';
 
 const money = (n: number | null | undefined) => (n === null || n === undefined ? '' : `$${n.toFixed(2)}`);
 export default async function Equipment({ searchParams }: { searchParams: SP }) {
-  const s = await requireCan('view_prices');
+  const s = await requireCan('price.view');
   const sp = await searchParams; const db = await getDb(); const on = today();
-  const edit = can(s.role, 'edit_prices');
+  const edit = can(s, 'equipment.edit');
   const [models, field] = await Promise.all([listModels(db), inField(db)]);
   const parts = new Map(await Promise.all(models.flatMap((m) => [m.partItemId, m.batteryItemId]).filter((x): x is string => !!x)
     .map(async (id) => [id, await currentPart(db, id, on)] as const)));

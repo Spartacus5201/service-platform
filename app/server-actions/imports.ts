@@ -13,7 +13,7 @@ import { s, msgOf, domainError } from './form';
 
 // ---------- imports ----------
 export async function importReport(_: ImportUi, fd: FormData): Promise<ImportUi> {
-  const sess = await requireCan('import_reports');
+  const sess = await requireCan('import.run');
   const propertyId = s(fd, 'property_id')!;
   const file = fd.get('file');
   if (!(file instanceof File) || file.size === 0) return { error: 'Choose an .xlsx report or a Unit Directory .csv to import.' };
@@ -52,7 +52,7 @@ export async function importReport(_: ImportUi, fd: FormData): Promise<ImportUi>
 
 // ---------- import problems ----------
 export async function resolveIssueAction(fd: FormData) {
-  const sess = await requireCan('import_reports');
+  const sess = await requireCan('import.run');
   const id = s(fd, 'issue_id')!; const back = s(fd, 'back') ?? '/';
   const db = await getDb();
   try {

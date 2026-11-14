@@ -4,7 +4,7 @@ import { ACTIONS, OUTCOMES, RESULTS, PART_KINDS } from '@/src/service/record';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { today } from '@/src/server/dates';
-import { requireCan } from '@/src/server/session';
+import { requireCan, requireCanOwn } from '@/src/server/session';
 import { recordVisit, type Action, type Outcome, type PartKind } from '@/src/service/record';
 import { submitInvoice, InvoiceError } from '@/src/billing/invoice';
 import { addPhoto, approveCloseout, saveClientText, sendInvoiceSheet, CloseoutError } from '@/src/service/closeout';
@@ -18,7 +18,7 @@ import { s, oneOf, n, msgOf, isRedirect, domainError } from './form';
 
 // ---------- service ----------
 export async function recordVisitAction(_: FormState, fd: FormData): Promise<FormState> {
-  const sess = await requireCan('record_service');
+  const sess = await requireCanOwn('visit.record');
   const endpointId = s(fd, 'endpoint_id')!; const propertyId = s(fd, 'property_id')!;
   const action = oneOf(fd, 'action', ACTIONS) ?? 'inspect_test';
   const replKind = oneOf(fd, 'repl_kind', PART_KINDS);
@@ -38,7 +38,7 @@ export async function recordVisitAction(_: FormState, fd: FormData): Promise<For
 
 // ---------- invoicing ----------
 export async function submitInvoiceAction(fd: FormData) {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('invoice.manage');
   const propertyId = s(fd, 'property_id')!;
   const items = fd.getAll('event').map(String).map((id) => ({
     eventId: id, laborAmount: n(fd, `labor_${id}`) ?? 0,
@@ -54,7 +54,7 @@ export async function submitInvoiceAction(fd: FormData) {
 
 // ---------- service notes close-out ----------
 export async function createCloseoutAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('visit.record');
   const propertyId = s(fd, 'property_id')!;
   const back = `/properties/${propertyId}/closeout/new`;
   const rows = fd.getAll('row').map(String);
@@ -74,7 +74,7 @@ export async function createCloseoutAction(fd: FormData) {
 }
 
 export async function saveCloseoutAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('visit.record');
   const id = s(fd, 'visit_id')!;
   const edits = fd.getAll('event').map(String).map((e) => ({ eventId: e, clientComment: s(fd, `comment_${e}`), extraComment: s(fd, `extra_${e}`) }));
   try { await saveClientText(await getDb(), id, edits, s(fd, 'summary'), sess.userId); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
@@ -82,14 +82,14 @@ export async function saveCloseoutAction(fd: FormData) {
 }
 
 export async function approveCloseoutAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('notes.approve');
   const id = s(fd, 'visit_id')!;
   try { const db = await getDb(); await approveCloseout(db, id, sess.userId); await buildIdUpdate(db, id); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${id}`, 'Client notes approved.'));
 }
 
 export async function addPhotoAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('visit.record');
   const id = s(fd, 'visit_id')!; const f = fd.get('photo');
   if (!(f instanceof File) || f.size === 0) redirect(withError(`/visits/${id}`, 'Choose a photo first.'));
   try {
@@ -99,14 +99,14 @@ export async function addPhotoAction(fd: FormData) {
 }
 
 export async function sendInvoiceSheetAction(fd: FormData) {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('invoice.manage');
   const id = s(fd, 'visit_id')!;
   try { await sendInvoiceSheet(await getDb(), id, sess.userId, today(), s(fd, 'external_ref')); } catch (e) { if (domainError(e) || e instanceof InvoiceError) redirect(withError(`/visits/${id}`, msgOf(e))); throw e; }
   redirect(withMsg(`/visits/${id}`, 'Recorded as sent to admin.'));
 }
 
 export async function recordInvoiceRefAction(fd: FormData) {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('invoice.manage');
   const id = s(fd, 'visit_id')!; const ref = s(fd, 'external_ref');
   if (!ref) redirect(withError(`/visits/${id}`, 'Enter the invoice number.'));
   const db = await getDb();
@@ -118,7 +118,7 @@ export async function recordInvoiceRefAction(fd: FormData) {
 
 // ---------- corrections ----------
 export async function correctVisitAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('service.correct');
   const id = s(fd, 'visit_id')!; const back = `/visits/${id}/correct`;
   const reason = s(fd, 'reason');
   const db = await getDb();
@@ -156,7 +156,7 @@ export async function correctVisitAction(fd: FormData) {
 
 // ---------- ID update ----------
 export async function saveIdUpdateAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('idupdate.manage');
   const id = s(fd, 'visit_id')!;
   const edits = fd.getAll('row').map(String).map((r) => ({ id: r, newMiuid: s(fd, `miuid_${r}`), newPort: s(fd, `port_${r}`) ?? '0', newNet: s(fd, `net_${r}`) ?? '0', systemType: s(fd, `system_${r}`), meterType: s(fd, `meter_${r}`) }));
   try { await saveIdOverrides(await getDb(), id, edits); } catch (e) { if (domainError(e)) redirect(withError(`/visits/${id}/ids`, msgOf(e))); throw e; }
@@ -164,7 +164,7 @@ export async function saveIdUpdateAction(fd: FormData) {
 }
 
 export async function markIdUpdateSentAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('idupdate.manage');
   const id = s(fd, 'visit_id')!;
   const n = await markExported(await getDb(), id);
   redirect(withMsg(`/visits/${id}/ids`, n ? `${n} unit${n === 1 ? '' : 's'} marked as sent to billing.` : 'Nothing to mark.'));

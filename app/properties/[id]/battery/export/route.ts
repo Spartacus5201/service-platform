@@ -8,7 +8,7 @@ import { lowBatteryReport, lowBatteryXlsx } from '@/src/service/battery';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const s = await getSession();
-  if (!s || s.mustChangePassword || !can(s.role, 'edit_documents')) return new NextResponse('Not allowed.', { status: 403 });
+  if (!s || s.mustChangePassword || !can(s, 'audit.review')) return new NextResponse('Not allowed.', { status: 403 });
   const { id } = await ctx.params; const db = await getDb();
   const p = await getProperty(db, id); if (!p) return new NextResponse('Not found.', { status: 404 });
   const bytes = await lowBatteryXlsx(await lowBatteryReport(db, id, today()), { name: p.name, classId: p.class_id }, today());

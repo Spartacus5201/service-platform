@@ -8,7 +8,7 @@ describe('activity log and property list', () => {
   it('lists changes newest first, filters, and names the person', async () => {
     const { db } = await world();
     const me = await createUser(db, { email: 'a@x.io', name: 'Ann', role: 'admin', password: 'Password-1234', mustChangePassword: false });
-    await addUser(db, me, { email: 'b@x.io', name: 'Bob', role: 'office' });
+    await addUser(db, me, { email: 'b@x.io', name: 'Bob', roles: ['coordinator'] });
     await saveSettings(db, me, { post_audit_days: '9' });
     const all = await listActivity(db);
     expect(all.rows[0]).toMatchObject({ who: 'Ann', action: 'setting_changed', label: 'Changed a setting' });

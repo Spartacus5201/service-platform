@@ -12,11 +12,11 @@ import { Badge, Flash, money, one, us, daysSince, type SP } from '../../ui';
 import { StageBadge } from '../stage';
 
 export default async function Job({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const s = await requireCan('edit_documents');
+  const s = await requireCan('job.view');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const j = await jobDetail(db, id); if (!j) notFound();
-  const canPrice = can(s.role, 'edit_prices');
+  const canPrice = can(s, 'price.view');
   const freeAudits = (await db.query<{ id: string; on: string; filename: string | null }>(
     `SELECT id, imported_at::date::text "on", filename FROM import_batch WHERE property_id=$1 AND job_id IS NULL AND kind IN ('auto_audit','manual_audit') ORDER BY imported_at DESC LIMIT 20`, [j.propertyId])).rows;
   const latestAudit = j.audits[j.audits.length - 1];

@@ -9,7 +9,7 @@ import { auditCsv, auditXlsx, caseZip } from '@/src/review/export';
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string; batchId: string }> }) {
   const s = await getSession();
-  if (!s || s.mustChangePassword || !can(s.role, 'edit_documents')) return new NextResponse('Not allowed.', { status: 403 });
+  if (!s || s.mustChangePassword || !can(s, 'audit.review')) return new NextResponse('Not allowed.', { status: 403 });
   const { id, batchId } = await ctx.params;
   const db = await getDb();
   const owns = await db.query(`SELECT 1 FROM import_batch WHERE id=$1 AND property_id=$2`, [batchId, id]);

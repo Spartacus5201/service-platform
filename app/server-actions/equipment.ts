@@ -9,7 +9,7 @@ import { withError, withMsg } from '../ui';
 const list = (v: string | null) => (v ?? '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 
 export async function saveModelAction(fd: FormData) {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('equipment.edit');
   const id = s(fd, 'id');
   let saved: string;
   try {

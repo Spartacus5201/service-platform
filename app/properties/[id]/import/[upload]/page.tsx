@@ -9,7 +9,7 @@ import { Badge, Flash, one, type SP } from '../../../../ui';
 const HINT: Record<string, string> = { service: 'Water, Gas or Electric', occupants: 'a number, e.g. 0', battery_level: 'a percent, e.g. 40', move_in: 'a date, e.g. 01/31/2026', move_out: 'a date, e.g. 01/31/2026' };
 
 export default async function ImportWizard({ params, searchParams }: { params: Promise<{ id: string; upload: string }>; searchParams: SP }) {
-  await requireCan('import_reports');
+  await requireCan('import.run');
   const { id, upload } = await params; const sp = await searchParams;
   const db = await getDb(); const prop = await getProperty(db, id);
   let v: WizardView;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { openDb } from '../src/db';
-import { hashPassword, verifyPassword, createUser, authenticate, changePassword, can, parseCredentialsMd } from '../src/auth/auth';
+import { hashPassword, verifyPassword, createUser, authenticate, changePassword, can, canOwn, parseCredentialsMd } from '../src/auth/auth';
 
 describe('passwords', () => {
   it('hashes with a random salt and verifies', async () => {
@@ -22,7 +22,7 @@ describe('login', () => {
     await createUser(db, { email: 'Office@Example.test', name: 'Office One', role: 'office', password: 'temporary-pass-1' });
     expect(await authenticate(db, 'office@example.test', 'nope-nope-nope')).toBeNull();
     const s = await authenticate(db, ' OFFICE@example.test ', 'temporary-pass-1');
-    expect(s).toMatchObject({ role: 'office', mustChangePassword: true });
+    expect(s).toMatchObject({ roles: expect.arrayContaining(['coordinator', 'billing']), mustChangePassword: true });
     expect(await changePassword(db, s!.userId, 'wrong-current-pw', 'a-new-password-2')).toBe(false);
     expect(await changePassword(db, s!.userId, 'temporary-pass-1', 'a-new-password-2')).toBe(true);
     expect(await authenticate(db, 'office@example.test', 'temporary-pass-1')).toBeNull();
@@ -43,15 +43,18 @@ describe('login', () => {
 });
 
 describe('permissions', () => {
-  it('technicians never see prices', () => {
-    expect(can('technician', 'view_prices')).toBe(false);
-    expect(can('technician', 'edit_prices')).toBe(false);
-    expect(can('technician', 'record_service')).toBe(true);
-  });
-  it('only admins manage users', () => {
-    expect(can('admin', 'manage_users')).toBe(true);
-    expect(can('office', 'manage_users')).toBe(false);
-  });
+  it('technicians never see prices; managers do; old roles map onto the new ones', async () => {
+    const { openDb } = await import('../src/db');
+    const { loadAccess } = await import('../src/auth/auth');
+    const db = await openDb();
+    const tech = await loadAccess(db, await createUser(db, { email: 't@x.io', name: 'T', role: 'technician', password: 'Password-1234' }));
+    expect(can(tech, 'price.view')).toBe(false); expect(can(tech, 'visit.record')).toBe(false); expect(canOwn(tech, 'visit.record')).toBe(true);
+    const office = await loadAccess(db, await createUser(db, { email: 'o@x.io', name: 'O', role: 'office', password: 'Password-1234' }));
+    expect(office.roles.sort()).toEqual(['billing', 'coordinator']);
+    expect(can(office, 'price.edit')).toBe(true); expect(can(office, 'users.manage')).toBe(false);
+    const admin = await loadAccess(db, await createUser(db, { email: 'a@x.io', name: 'A', role: 'admin', password: 'Password-1234' }));
+    expect(admin.roles.sort()).toEqual(['admin', 'manager']); expect(can(admin, 'users.manage')).toBe(true); expect(can(admin, 'service.correct')).toBe(true);
+  }, 60000);
 });
 
 describe('credentials file', () => {

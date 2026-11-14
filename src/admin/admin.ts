@@ -1,24 +1,18 @@
 // User and settings administration. Kept free of web code so it is testable and reusable.
 import { UserError } from '../errors';
 import { randomInt } from 'node:crypto';
-import type { Db } from '../db';
+import type { Db, Q } from '../db';
 import { readSettings } from '../settings';
-import { hashPassword, type Role } from '../auth/auth';
+import { hashPassword } from '../auth/auth';
+import { keepAnAdmin } from './roles';
 
 export class AdminError extends UserError {}
-export const ROLE_NAMES = ['admin', 'office', 'coordinator', 'technician'] as const satisfies readonly Role[];
-export const ROLES: { role: Role; label: string; help: string }[] = [
-  { role: 'admin', label: 'Admin', help: 'Everything, including users and settings.' },
-  { role: 'office', label: 'Office', help: 'Prices, documents, imports, invoicing, service entry.' },
-  { role: 'coordinator', label: 'Coordinator', help: 'Documents, imports and service entry; sees prices but cannot change them.' },
-  { role: 'technician', label: 'Technician', help: 'Service entry and history; never sees prices.' },
-];
-
-export interface UserRow { id: string; email: string; name: string; role: Role; active: boolean; must_change_password: boolean; created_at: string; last_login: string | null }
+export interface UserRow { id: string; email: string; name: string; roles: string[]; active: boolean; must_change_password: boolean; created_at: string; last_login: string | null }
 
 export async function listUsers(db: Db): Promise<UserRow[]> {
   return (await db.query<UserRow>(
-    `SELECT u.id,u.email,u.name,u.role,u.active,u.must_change_password,u.created_at::text,
+    `SELECT u.id,u.email,u.name,u.active,u.must_change_password,u.created_at::text,
+            ARRAY(SELECT ur.role_key FROM user_role ur JOIN role r ON r.key=ur.role_key WHERE ur.user_id=u.id ORDER BY r.sort) roles,
             (SELECT max(at)::text FROM audit_log l WHERE l.user_id=u.id AND l.action='login') last_login
        FROM app_user u ORDER BY u.active DESC, u.name`)).rows;
 }
@@ -29,23 +23,25 @@ export function tempPassword(): string {
   return Array.from({ length: 14 }, () => a[randomInt(a.length)]).join('');
 }
 
-const log = (db: Db, by: string | null, action: string, target: string, detail: object) =>
+const log = (db: Q, by: string | null, action: string, target: string, detail: object) =>
   db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,$2,'user',$3,$4)`, [by, action, target, JSON.stringify(detail)]);
 
-async function otherActiveAdmins(db: Db, excluding: string): Promise<number> {
-  return Number((await db.query<{ n: string }>(`SELECT count(*) n FROM app_user WHERE role='admin' AND active AND id<>$1`, [excluding])).rows[0].n);
-}
-
-export async function addUser(db: Db, by: string | null, i: { email: string; name: string; role: Role }): Promise<{ id: string; password: string }> {
+export async function addUser(db: Db, by: string | null, i: { email: string; name: string; roles: string[] }): Promise<{ id: string; password: string }> {
   const email = i.email.trim().toLowerCase(); const name = i.name.trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AdminError('Enter a valid email address.');
   if (!name) throw new AdminError('Enter a name.');
-  if (!ROLES.some((r) => r.role === i.role)) throw new AdminError('Pick a role.');
+  if (!i.roles.length) throw new AdminError('Give the person at least one role.');
+  const known = (await db.query<{ key: string }>(`SELECT key FROM role WHERE retired_at IS NULL`)).rows.map((r) => r.key);
+  for (const r of i.roles) if (!known.includes(r)) throw new AdminError(`Unknown role ${r}.`);
   if ((await db.query(`SELECT 1 FROM app_user WHERE email=$1`, [email])).rows.length) throw new AdminError(`${email} already has an account.`);
   const password = tempPassword();
-  const id = (await db.query<{ id: string }>(`INSERT INTO app_user (email,name,role,password_hash,must_change_password) VALUES ($1,$2,$3,$4,true) RETURNING id`,
-    [email, name, i.role, await hashPassword(password)])).rows[0].id;
-  await log(db, by, 'user_created', id, { email, role: i.role });
+  const id = await db.transaction(async (tx) => {
+    const uid = (await tx.query<{ id: string }>(`INSERT INTO app_user (email,name,password_hash,must_change_password) VALUES ($1,$2,$3,true) RETURNING id`,
+      [email, name, await hashPassword(password)])).rows[0].id;
+    for (const r of i.roles) await tx.query(`INSERT INTO user_role (user_id,role_key) VALUES ($1,$2)`, [uid, r]);
+    return uid;
+  });
+  await log(db, by, 'user_created', id, { email, roles: i.roles });
   return { id, password };
 }
 
@@ -57,21 +53,13 @@ export async function resetPassword(db: Db, by: string | null, userId: string): 
   return password;
 }
 
-export async function setRole(db: Db, by: string | null, userId: string, role: Role): Promise<void> {
-  if (!ROLES.some((r) => r.role === role)) throw new AdminError('Pick a role.');
-  const u = (await db.query<{ role: Role; active: boolean }>(`SELECT role,active FROM app_user WHERE id=$1`, [userId])).rows[0];
-  if (!u) throw new AdminError('Unknown user.');
-  if (u.role === 'admin' && role !== 'admin' && u.active && (await otherActiveAdmins(db, userId)) === 0) throw new AdminError('There must be at least one active admin.');
-  await db.query(`UPDATE app_user SET role=$2 WHERE id=$1`, [userId, role]);
-  await log(db, by, 'role_changed', userId, { from: u.role, to: role });
-}
-
 export async function setActive(db: Db, by: string | null, userId: string, active: boolean): Promise<void> {
-  const u = (await db.query<{ role: Role; active: boolean }>(`SELECT role,active FROM app_user WHERE id=$1`, [userId])).rows[0];
-  if (!u) throw new AdminError('Unknown user.');
-  if (!active && u.role === 'admin' && u.active && (await otherActiveAdmins(db, userId)) === 0) throw new AdminError('There must be at least one active admin.');
-  await db.query(`UPDATE app_user SET active=$2 WHERE id=$1`, [userId, active]);
-  await log(db, by, active ? 'user_reactivated' : 'user_deactivated', userId, {});
+  await db.transaction(async (tx) => {
+    const r = await tx.query(`UPDATE app_user SET active=$2, session_version=session_version+1 WHERE id=$1`, [userId, active]);
+    if (!r.affectedRows) throw new AdminError('Unknown user.');
+    if (!active) await keepAnAdmin(tx);
+    await log(tx, by, active ? 'user_reactivated' : 'user_deactivated', userId, {});
+  });
 }
 
 // ---------- settings ----------
@@ -126,7 +114,7 @@ const ACTION_LABEL: Record<string, string> = {
   login: 'Signed in', login_failed: 'Failed sign-in', password_changed: 'Changed password', setting_changed: 'Changed a setting',
   audit_override: 'Changed an audit result', audit_override_cleared: 'Cleared an audit change', catalog_import: 'Imported catalog prices',
   closeout_approved: 'Approved client notes', event_corrected: 'Corrected a service entry', invoice_ref_recorded: 'Recorded an invoice reference',
-  price_reconfirmed: 'Reconfirmed prices', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map', service_added: 'Added a service code', property_added: 'Added a property', property_changed: 'Changed property details', coverage_recalculated: 'Warranty recalculated after a correction', event_voided: 'Voided a service entry', visit_corrected: 'Corrected a visit', part_id_corrected: 'Corrected a part ID', service_changed: 'Changed a service code', equipment_added: 'Added an equipment model', equipment_changed: 'Changed an equipment model',
+  price_reconfirmed: 'Reconfirmed prices', role_permissions_changed: 'Changed what a role can do', role_added: 'Added a role', role_renamed: 'Renamed a role', role_retired: 'Retired a role', role_restored: 'Brought back a role', user_roles_changed: 'Changed someone\'s roles', user_created: 'Added a user', password_reset: 'Reset a password', user_deactivated: 'Deactivated a user', user_reactivated: 'Reactivated a user', import_layout_saved: 'Saved an import map', import_layout_retired: 'Retired an import map', service_added: 'Added a service code', property_added: 'Added a property', property_changed: 'Changed property details', coverage_recalculated: 'Warranty recalculated after a correction', event_voided: 'Voided a service entry', visit_corrected: 'Corrected a visit', part_id_corrected: 'Corrected a part ID', service_changed: 'Changed a service code', equipment_added: 'Added an equipment model', equipment_changed: 'Changed an equipment model',
 };
 export interface ActivityRow { id: string; at: string; who: string | null; action: string; label: string; entity: string | null; entityId: string | null; detail: string }
 

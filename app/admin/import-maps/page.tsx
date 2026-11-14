@@ -6,7 +6,7 @@ import { retireLayoutAction } from '../../server-actions/wizard';
 import { Badge, Flash, one, localDate, type SP } from '../../ui';
 
 export default async function ImportMaps({ searchParams }: { searchParams: SP }) {
-  await requireCan('manage_users');
+  await requireCan('import.maps');
   const sp = await searchParams;
   const maps = await listLayouts(await getDb(), { includeRetired: true });
   return (

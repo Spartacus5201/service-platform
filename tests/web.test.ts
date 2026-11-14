@@ -16,6 +16,7 @@ vi.mock('next/headers', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 
 process.env.SESSION_SECRET = 'test-secret-for-web-tests-only';
+const ROLE_KEYS = ['admin', 'manager', 'coordinator', 'scheduler', 'technician', 'billing'] as const;
 let w: World; const users = {} as Record<Role, string>;
 const signInAs = async (role: Role | null) => {
   jar.clear();
@@ -28,25 +29,25 @@ const redirectOf = async (p: Promise<unknown>) => {
 beforeAll(async () => {
   w = await world();
   (globalThis as unknown as { __spDb?: Promise<unknown> }).__spDb = Promise.resolve(w.db);
-  for (const role of ['admin', 'office', 'coordinator', 'technician'] as Role[])
-    users[role] = await createUser(w.db, { email: `${role}@x.io`, name: role, role, password: 'Password-1234', mustChangePassword: false });
+  for (const role of ROLE_KEYS)
+    users[role] = await createUser(w.db, { email: `${role}@x.io`, name: role, roles: [role], password: 'Password-1234', mustChangePassword: false });
 }, 60000);
 
 
 describe('download routes refuse the wrong role', () => {
   const routes: { file: string; params: () => Record<string, string>; url: string; allowed: Role[] }[] = [
-    { file: 'aar/route', params: () => ({}), url: 'http://t/aar?visit=00000000-0000-0000-0000-000000000000', allowed: ['admin', 'office', 'coordinator'] },
+    { file: 'aar/route', params: () => ({}), url: 'http://t/aar?visit=00000000-0000-0000-0000-000000000000', allowed: ['admin', 'manager', 'coordinator', 'scheduler', 'billing'] },
     { file: 'admin/backup/route', params: () => ({}), url: 'http://t/admin/backup', allowed: ['admin'] },
-    { file: 'documents/[id]/pdf/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x?copy=client', allowed: ['admin', 'office', 'coordinator'] },
-    { file: 'properties/[id]/audits/[batchId]/export/route', params: () => ({ id: w.pid, batchId: w.batchId }), url: 'http://t/x?format=csv', allowed: ['admin', 'office', 'coordinator'] },
-    { file: 'properties/[id]/battery/export/route', params: () => ({ id: w.pid }), url: 'http://t/x', allowed: ['admin', 'office', 'coordinator'] },
-    { file: 'visits/[id]/export/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x?kind=invoice', allowed: ['admin', 'office'] },
-    { file: 'visits/[id]/ids/export/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x', allowed: ['admin', 'office', 'coordinator'] },
-    { file: 'visits/[id]/photo/[photoId]/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000', photoId: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x', allowed: ['admin', 'office', 'coordinator'] },
+    { file: 'documents/[id]/pdf/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x?copy=client', allowed: ['manager', 'coordinator', 'scheduler', 'billing'] },
+    { file: 'properties/[id]/audits/[batchId]/export/route', params: () => ({ id: w.pid, batchId: w.batchId }), url: 'http://t/x?format=csv', allowed: ['manager', 'coordinator'] },
+    { file: 'properties/[id]/battery/export/route', params: () => ({ id: w.pid }), url: 'http://t/x', allowed: ['manager', 'coordinator'] },
+    { file: 'visits/[id]/export/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x?kind=invoice', allowed: ['manager', 'billing'] },
+    { file: 'visits/[id]/ids/export/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x', allowed: ['manager', 'coordinator'] },
+    { file: 'visits/[id]/photo/[photoId]/route', params: () => ({ id: '00000000-0000-0000-0000-000000000000', photoId: '00000000-0000-0000-0000-000000000000' }), url: 'http://t/x', allowed: ['admin', 'manager', 'coordinator', 'scheduler', 'billing'] },
   ];
   for (const r of routes) it(r.file, async () => {
     const { GET } = await import(`../app/${r.file}`);
-    for (const role of [null, 'admin', 'office', 'coordinator', 'technician'] as (Role | null)[]) {
+    for (const role of [null, ...ROLE_KEYS] as (Role | null)[]) {
       await signInAs(role);
       const res: Response = await GET(new Request(r.url), { params: Promise.resolve(r.params()) }).catch((e: unknown) => ({ status: (e as Error).message.includes('NEXT_') ? 302 : 500 }) as Response);
       const refused = res.status === 403;
@@ -69,6 +70,26 @@ describe('download routes refuse the wrong role', () => {
 });
 
 describe('server actions', () => {
+  it('each role is refused what it may not do', async () => {
+    const { importReport } = await import('../app/server-actions/imports');
+    const { createDocumentAction } = await import('../app/server-actions/documents');
+    const { closeJobAction, createJobAction } = await import('../app/server-actions/jobs');
+    const { createJob } = await import('../src/jobs/jobs');
+    const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+    for (const role of ['scheduler', 'billing', 'technician'] as Role[]) {
+      await signInAs(role);
+      expect([role, await redirectOf(importReport({}, fd({ property_id: w.pid })))]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+      expect([role, await redirectOf(createDocumentAction(fd({ property_id: w.pid, type: 'WA' })))]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+      expect([role, await redirectOf(createJobAction(fd({ property_id: w.pid, title: 'x' })))]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+    }
+    // closing a job early is the Manager's
+    const job = await createJob(w.db, { propertyId: w.pid, title: 'J', requestedOn: '2026-11-01' });
+    await signInAs('coordinator');
+    expect(await redirectOf(closeJobAction(fd({ job_id: job, early: '1', close_reason: 'client cancelled' })))).toMatch(/needs the Manager role/);
+    await signInAs('manager');
+    expect(await redirectOf(closeJobAction(fd({ job_id: job, early: '1', close_reason: 'client cancelled' })))).toMatch(/Job closed/);
+  }, 60000);
+
   it('a technician cannot import a report', async () => {
     const { importReport } = await import('../app/server-actions/imports');
     await signInAs('technician');
@@ -76,7 +97,7 @@ describe('server actions', () => {
     expect(await redirectOf(importReport({}, fd))).toMatch(/role cannot do that/);
   });
 
-  it('A7: a coordinator\'s save keeps the shipping and cannot set prices; an office user can', async () => {
+  it('A7: a coordinator\'s save keeps the shipping and cannot set prices; a manager can', async () => {
     const { createDocument } = await import('../src/documents/build');
     const { saveLinesAction } = await import('../app/server-actions/documents');
     const d = await createDocument(w.db, { propertyId: w.pid, type: 'Proposal', createdOn: '2026-11-13' });
@@ -91,7 +112,7 @@ describe('server actions', () => {
     const after = await w.db.query<{ description: string; unit_price: string | null }>(`SELECT description, unit_price::text FROM document_line WHERE version_id=$1 ORDER BY description DESC`, [d.versionId]);
     expect(after.rows.map((r) => [r.description, r.unit_price])).toEqual([['Transmitter', '80.00'], ['Extra', null]]);
     expect((await w.db.query<{ s: string }>(`SELECT shipping::text s FROM document WHERE id=$1`, [d.documentId])).rows[0].s).toBe('25.00');
-    await signInAs('office');
+    await signInAs('manager');
     await redirectOf(saveLinesAction(form('90')));
     expect((await w.db.query<{ p: string }>(`SELECT unit_price::text p FROM document_line WHERE id=$1`, [line])).rows[0].p).toBe('90.00');
   }, 60000);

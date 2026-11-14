@@ -5,7 +5,7 @@ import { saveServiceAction } from '../../server-actions/lists';
 import { Badge, Flash, one, type SP } from '../../ui';
 
 export default async function Services({ searchParams }: { searchParams: SP }) {
-  await requireCan('manage_users');
+  await requireCan('lists.edit');
   const sp = await searchParams; const db = await getDb();
   const list = await listServices(db, { includeRetired: true });
   const inUse = new Map((await db.query<{ service_code: string; n: string }>(`SELECT service_code, count(*) n FROM endpoint GROUP BY service_code`)).rows.map((r) => [r.service_code, Number(r.n)]));

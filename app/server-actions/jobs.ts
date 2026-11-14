@@ -4,7 +4,8 @@ import { JOB_SOURCES } from '@/src/jobs/jobs';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/src/server/db';
 import { today } from '@/src/server/dates';
-import { requireCan } from '@/src/server/session';
+import { requireCan, requireSession } from '@/src/server/session';
+import { can } from '@/src/auth/auth';
 import { createJob, updateJob, closeJob, reopenJob, attachAudit, refreshFromSalesforce, JobError, type JobSource } from '@/src/jobs/jobs';
 import { salesforce, SalesforceError } from '@/src/salesforce/client';
 import { withError, withMsg } from '../ui';
@@ -16,7 +17,7 @@ const jobFields = (fd: FormData) => ({
   requestedBy: s(fd, 'requested_by'), requestNotes: s(fd, 'request_notes'), salesforceCase: s(fd, 'salesforce_case'), salesforceStatus: s(fd, 'salesforce_status'),
 });
 export async function createJobAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('job.manage');
   const propertyId = s(fd, 'property_id')!;
   let id: string;
   const db = await getDb();
@@ -27,22 +28,25 @@ export async function createJobAction(fd: FormData) {
   redirect(withMsg(`/jobs/${id}`, 'Job created.'));
 }
 export async function updateJobAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('job.manage');
   const id = s(fd, 'job_id')!;
   try { await updateJob(await getDb(), id, jobFields(fd)); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Saved.'));
 }
 export async function closeJobAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('job.manage');
   const id = s(fd, 'job_id')!; const db = await getDb();
+  const sess = await requireSession();
+  const early = fd.get('early') === '1';
+  if ((fd.get('reopen') || early) && !can(sess, 'job.override')) redirect(withError(`/jobs/${id}`, 'Closing a job early or reopening it needs the Manager role.'));
   if (fd.get('reopen')) { await reopenJob(db, id); redirect(withMsg(`/jobs/${id}`, 'Job reopened.')); }
-  try { await closeJob(db, id, today(), s(fd, 'close_reason'), fd.get('early') === '1'); }
+  try { await closeJob(db, id, today(), s(fd, 'close_reason'), early); }
   catch (e) { if (e instanceof JobError) redirect(withError(`/jobs/${id}`, e.message)); throw e; }
   redirect(withMsg(`/jobs/${id}`, 'Job closed.'));
 }
 export async function refreshSalesforceAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('job.manage');
   const id = s(fd, 'job_id')!;
   let msg: string;
   try {
@@ -56,7 +60,7 @@ export async function refreshSalesforceAction(fd: FormData) {
 }
 
 export async function attachAuditAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('job.manage');
   const id = s(fd, 'job_id')!; const batch = s(fd, 'batch_id');
   if (!batch) redirect(withError(`/jobs/${id}`, 'Pick an audit.'));
   try { await attachAudit(await getDb(), id, batch); }

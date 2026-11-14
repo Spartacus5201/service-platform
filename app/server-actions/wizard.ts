@@ -14,7 +14,7 @@ const page = (pid: string, id: string) => `/properties/${pid}/import/${id}`;
 
 /** Run one wizard step and come back to the wizard page, with the step's message or error. */
 async function step(fd: FormData, run: (db: Awaited<ReturnType<typeof getDb>>, id: string) => Promise<string | void>) {
-  await requireCan('import_reports');
+  await requireCan('import.run');
   const id = s(fd, 'upload_id') ?? ''; const db = await getDb();
   let pid = s(fd, 'property_id') ?? '';
   try {
@@ -72,7 +72,7 @@ export async function wizExcludeAction(fd: FormData) {
 }
 
 export async function wizImportAction(fd: FormData) {
-  const sess = await requireCan('import_reports');
+  const sess = await requireCan('import.run');
   const id = s(fd, 'upload_id') ?? ''; const db = await getDb();
   let pid = '';
   try {
@@ -92,14 +92,14 @@ export async function wizImportAction(fd: FormData) {
 }
 
 export async function wizDiscardAction(fd: FormData) {
-  await requireCan('import_reports');
+  await requireCan('import.run');
   const db = await getDb(); const id = s(fd, 'upload_id') ?? ''; const pid = s(fd, 'property_id') ?? '';
   await discardUpload(db, id);
   redirect(withMsg(pid ? `/properties/${pid}` : '/', 'File discarded. Nothing was imported.'));
 }
 
 export async function retireLayoutAction(fd: FormData) {
-  const sess = await requireCan('manage_users');
+  const sess = await requireCan('import.maps');
   try { await retireLayout(await getDb(), s(fd, 'id') ?? '', sess.userId); }
   catch (e) { if (e instanceof WizardError) redirect(withError('/admin/import-maps', e.message)); throw e; }
   redirect(withMsg('/admin/import-maps', 'Map retired. Files are no longer matched to it; past imports keep their record of it.'));

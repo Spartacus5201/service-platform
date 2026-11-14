@@ -12,7 +12,7 @@ import { createProperty as addProperty, updateProperty as saveProperty } from '@
 
 // ---------- properties ----------
 export async function createProperty(fd: FormData) {
-  const sess = await requireCan('import_reports');
+  const sess = await requireCan('property.edit');
   let id: string;
   try { id = await addProperty(await getDb(), sess.userId, { classId: s(fd, 'class_id'), name: s(fd, 'name'), address: s(fd, 'address'), installedByUs: fd.get('installed_by_us') === 'on' }); }
   catch (e) { if (domainError(e)) redirect(withError('/', msgOf(e))); throw e; }
@@ -20,7 +20,7 @@ export async function createProperty(fd: FormData) {
 }
 
 export async function saveSystemNotesAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('property.edit');
   const id = s(fd, 'id')!; const db = await getDb();
   const utilities = [1, 2, 3].map((i) => ({ utility: s(fd, `utility_${i}`) ?? '', device: s(fd, `device_${i}`) ?? '' })).filter((u) => u.utility || u.device);
   const kind = s(fd, 'milestone_kind');
@@ -30,8 +30,8 @@ export async function saveSystemNotesAction(fd: FormData) {
     techNote: s(fd, 'tech_note'), transmitterDevice: s(fd, 'transmitter_device'), meterDevice: s(fd, 'meter_device'), equipment: parseEquipment(s(fd, 'equipment') ?? ''),
   };
   // Price editors set property prices; anyone else saves the notes and leaves the prices as they were.
-  const prices: Record<string, number> = can(sess.role, 'edit_prices') ? {} : await getPropertyPrices(db, id);
-  if (can(sess.role, 'edit_prices')) for (const i of [1, 2, 3, 4, 5]) { const item = s(fd, `price_item_${i}`); const v = n(fd, `price_${i}`); if (item && v !== null) prices[item] = v; }
+  const prices: Record<string, number> = can(sess, 'price.edit') ? {} : await getPropertyPrices(db, id);
+  if (can(sess, 'price.edit')) for (const i of [1, 2, 3, 4, 5]) { const item = s(fd, `price_item_${i}`); const v = n(fd, `price_${i}`); if (item && v !== null) prices[item] = v; }
   try { await saveSystemNotes(db, id, notes, prices, fd.get('msa') === 'on', sess.userId); }
   catch (e) { if (domainError(e)) redirect(withError(`/properties/${id}?tab=settings`, msgOf(e))); throw e; }
   revalidatePath(`/properties/${id}`);
@@ -39,7 +39,7 @@ export async function saveSystemNotesAction(fd: FormData) {
 }
 
 export async function updateProperty(fd: FormData) {
-  const sess = await requireCan('import_reports');
+  const sess = await requireCan('property.edit');
   const id = s(fd, 'id')!;
   try {
     await saveProperty(await getDb(), sess.userId, id, {

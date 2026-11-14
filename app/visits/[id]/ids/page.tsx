@@ -7,7 +7,7 @@ import { markIdUpdateSentAction, saveIdUpdateAction } from '../../../server-acti
 import { Badge, Flash, one, type SP } from '../../../ui';
 
 export default async function IdUpdate({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  await requireCan('edit_documents');
+  await requireCan('idupdate.manage');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();

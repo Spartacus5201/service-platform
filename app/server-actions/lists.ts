@@ -11,7 +11,7 @@ import { withError, withMsg } from '../ui';
 
 
 export async function saveServiceAction(fd: FormData) {
-  const sess = await requireCan('manage_users');
+  const sess = await requireCan('lists.edit');
   let r: string;
   try {
     r = await saveService(await getDb(), sess.userId, {

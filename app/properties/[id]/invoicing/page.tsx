@@ -8,7 +8,7 @@ import { submitInvoiceAction } from '../../../server-actions/field';
 import { Badge, Flash, money, one, type SP } from '../../../ui';
 
 export default async function Invoicing({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  await requireCan('edit_prices');
+  await requireCan('invoice.manage');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const p = await getProperty(db, id); if (!p) notFound();

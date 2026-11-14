@@ -12,7 +12,7 @@ import { s, oneOf, n, msgOf, isRedirect, domainError } from './form';
 
 // ---------- documents ----------
 export async function createDocumentAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('document.draft');
   const propertyId = s(fd, 'property_id')!; const batchId = s(fd, 'batch_id');
   const type = oneOf(fd, 'type', DOC_TYPES) ?? 'WA';
   try {
@@ -30,9 +30,9 @@ export async function createDocumentAction(fd: FormData) {
 }
 
 export async function saveLinesAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('document.draft');
   const docId = s(fd, 'document_id')!;
-  const canPrice = can(sess.role, 'edit_prices');
+  const canPrice = can(sess, 'price.edit');
   const db = await getDb();
   try {
     const versionId = s(fd, 'version_id')!;
@@ -48,6 +48,7 @@ export async function saveLinesAction(fd: FormData) {
         addressee: s(fd, 'addressee'), notes: s(fd, 'notes'), shipping: n(fd, 'shipping'), preparedBy: s(fd, 'prepared_by') },
     }, canPrice);
     if (s(fd, 'intent') === 'issue') {
+      if (!can(sess, 'document.issue')) redirect(withMsg(`/documents/${docId}`, 'Draft saved. Issuing needs a role that can issue documents.'));
       const r = await issueVersion(db, s(fd, 'version_id')!, sess.userId, today());
       redirect(withMsg(`/documents/${docId}`, r.missingFields.length ? `Issued, but these merge fields are empty: ${r.missingFields.join(', ')}.` : 'Issued and locked.'));
     }
@@ -56,7 +57,7 @@ export async function saveLinesAction(fd: FormData) {
 }
 
 export async function issueAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('document.issue');
   const docId = s(fd, 'document_id')!;
   try {
     const r = await issueVersion(await getDb(), s(fd, 'version_id')!, sess.userId, today());
@@ -65,14 +66,14 @@ export async function issueAction(fd: FormData) {
 }
 
 export async function newVersionAction(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('document.draft');
   const docId = s(fd, 'document_id')!;
   try { await newVersion(await getDb(), docId); } catch (e) { if (domainError(e)) redirect(withError(`/documents/${docId}`, msgOf(e))); throw e; }
   redirect(withMsg(`/documents/${docId}`, 'New draft version started.'));
 }
 
 export async function reconfirmAction(fd: FormData) {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('price.edit');
   const docId = s(fd, 'document_id')!;
   try { await reconfirmPricing(await getDb(), docId, sess.userId, today()); } catch (e) { if (domainError(e)) redirect(withError(`/documents/${docId}`, msgOf(e))); throw e; }
   redirect(withMsg(`/documents/${docId}`, 'Pricing reconfirmed.'));

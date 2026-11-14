@@ -7,7 +7,7 @@ import { buildIdUpdate, idUpdateXlsx } from '@/src/service/idupdate';
 
 export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) {
   const s = await getSession();
-  if (!s || s.mustChangePassword || !can(s.role, 'edit_documents')) return new NextResponse('Not allowed.', { status: 403 });
+  if (!s || s.mustChangePassword || !can(s, 'idupdate.manage')) return new NextResponse('Not allowed.', { status: 403 });
   const { id } = await ctx.params;
   const db = await getDb();
   try {

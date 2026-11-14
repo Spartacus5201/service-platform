@@ -9,14 +9,14 @@ const GROUPS: [HitKind, string][] = [['property', 'Properties'], ['unit', 'Units
 export default async function SearchPage({ searchParams }: { searchParams: SP }) {
   const s = await requireSession();
   const q = (one((await searchParams).q) ?? '').trim();
-  const hits: Hit[] = q ? await search(await getDb(), q, { includeDocuments: can(s.role, 'edit_documents') }) : [];
+  const hits: Hit[] = q ? await search(await getDb(), q, { includeDocuments: can(s, 'document.view') }) : [];
   return (
     <>
       <h1>Search</h1>
       <form action="/search" method="get" className="card" role="search">
         <div className="row"><div className="field" style={{ flex: 3 }}><label htmlFor="q">Find</label><input id="q" name="q" defaultValue={q} autoFocus placeholder="1-101, a transmitter ID, a Case number, “leak”…" /></div>
           <div className="field"><button type="submit">Search</button></div></div>
-        <p className="small" style={{ margin: 0 }}>Every word must match. Searches names, addresses, unit numbers, device IDs and serials, visit notes, Case and Work Order numbers{can(s.role, 'edit_documents') ? ', and documents' : ''}.</p>
+        <p className="small" style={{ margin: 0 }}>Every word must match. Searches names, addresses, unit numbers, device IDs and serials, visit notes, Case and Work Order numbers{can(s, 'document.view') ? ', and documents' : ''}.</p>
       </form>
       {q && !hits.length && <div className="card">Nothing matches “{q}”.{q.trim().length < 2 ? ' Type at least two characters.' : ''}</div>}
       {GROUPS.map(([k, label]) => {

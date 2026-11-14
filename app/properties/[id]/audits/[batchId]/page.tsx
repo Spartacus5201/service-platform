@@ -23,7 +23,7 @@ export default async function AuditReview({ params, searchParams }: { params: Pr
   const actionable = all.filter((l) => l.recommendation.action !== 'No action');
   const lines = showAll ? all : showPm ? all.filter((l) => l.lowBattery) : actionable;
   const count = (a: string) => all.filter((l) => l.recommendation.action === a).length;
-  const canDocs = can(s.role, 'edit_documents');
+  const canDocs = can(s, 'audit.review') || can(s, 'document.draft');
   const base = `/properties/${id}/audits/${batchId}`;
   const staged = await stagedLines(db, batchId, today());
   const stage = new Map(staged.map((l) => [l.readingId, l]));

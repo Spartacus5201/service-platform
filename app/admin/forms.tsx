@@ -14,7 +14,7 @@ function Secret({ s }: { s: SecretState }) {
   );
 }
 
-export function AddUserForm({ roles }: { roles: { role: string; label: string; help: string }[] }) {
+export function AddUserForm({ roles }: { roles: { key: string; name: string; description: string }[] }) {
   const [st, action, pending] = useActionState<SecretState, FormData>(addUserAction, {});
   return (
     <form action={action} className="card">
@@ -22,10 +22,10 @@ export function AddUserForm({ roles }: { roles: { role: string; label: string; h
       <div className="row">
         <div className="field"><label htmlFor="name">Name</label><input id="name" name="name" required /></div>
         <div className="field" style={{ flex: 2 }}><label htmlFor="email">Email (sign-in name)</label><input id="email" name="email" type="email" required /></div>
-        <div className="field"><label htmlFor="role">Role</label>
-          <select id="role" name="role" defaultValue="office">{roles.map((r) => <option key={r.role} value={r.role}>{r.label}</option>)}</select></div>
       </div>
-      <p className="small">{roles.map((r) => `${r.label}: ${r.help}`).join(' ')}</p>
+      <fieldset style={{ border: 0, padding: 0 }}><legend className="small">Roles (one or more)</legend>
+        {roles.map((r) => <label key={r.key} style={{ display: 'block' }}><input type="checkbox" name="roles" value={r.key} /> <b>{r.name}</b> <span className="small">{r.description}</span></label>)}
+      </fieldset>
       <Secret s={st} />
       <div className="actions"><button type="submit" disabled={pending}>{pending ? 'Adding…' : 'Add user'}</button></div>
     </form>

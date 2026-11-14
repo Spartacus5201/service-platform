@@ -24,7 +24,7 @@ function PartSelect({ name, options, suggested, value, none }: { name: string; o
 }
 
 export default async function ModelPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const s = await requireCan('view_prices'); const edit = can(s.role, 'edit_prices');
+  const s = await requireCan('price.view'); const edit = can(s, 'equipment.edit');
   const { id } = await params; const sp = await searchParams; const db = await getDb();
   const isNew = id === 'new';
   if (isNew && !edit) notFound();

@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb } from './db';
-import { can, type Action, type Role, type Session } from '../auth/auth';
+import { can, canOwn, canAny, loadAccess, type Permission, type Session } from '../auth/auth';
 
 const COOKIE = 'sp_session';
 const MAX_AGE_S = 60 * 60 * 12;
@@ -59,10 +59,11 @@ export async function getSession(): Promise<Session | null> {
   let parsed: { u: string; v?: number; e: number };
   try { parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()); } catch { return null; }
   if (!parsed.u || parsed.e < Date.now()) return null;
-  const r = await (await getDb()).query<{ id: string; email: string; name: string; role: Role; must_change_password: boolean }>(
-    `SELECT id,email,name,role,must_change_password FROM app_user WHERE id=$1 AND active AND session_version=$2`, [parsed.u, parsed.v ?? -1]);
+  const db = await getDb();
+  const r = await db.query<{ id: string; email: string; name: string; must_change_password: boolean }>(
+    `SELECT id,email,name,must_change_password FROM app_user WHERE id=$1 AND active AND session_version=$2`, [parsed.u, parsed.v ?? -1]);
   const u = r.rows[0];
-  return u ? { userId: u.id, email: u.email, name: u.name, role: u.role, mustChangePassword: u.must_change_password } : null;
+  return u ? { userId: u.id, email: u.email, name: u.name, mustChangePassword: u.must_change_password, ...(await loadAccess(db, u.id)) } : null;
 }
 
 /** Pages and actions call this first. Redirects to login, or to the password change after a first sign-in. */
@@ -73,8 +74,23 @@ export async function requireSession(opts: { allowPasswordChange?: boolean } = {
   return s;
 }
 
-export async function requireCan(action: Action): Promise<Session> {
+/** For everything (scope "all"). */
+export async function requireCan(p: Permission): Promise<Session> {
   const s = await requireSession();
-  if (!can(s.role, action)) redirect('/?msg=' + encodeURIComponent('Your role cannot do that.'));
+  if (!can(s, p)) redirect('/?msg=' + encodeURIComponent('Your role cannot do that.'));
+  return s;
+}
+
+/** At least for the person's own records (scope "own" or "all"). The caller limits what an "own" holder sees. */
+export async function requireCanOwn(p: Permission): Promise<Session> {
+  const s = await requireSession();
+  if (!canOwn(s, p)) redirect('/?msg=' + encodeURIComponent('Your role cannot do that.'));
+  return s;
+}
+
+/** Any of these (pages with sections for different permissions, such as Admin). */
+export async function requireAny(ps: Permission[]): Promise<Session> {
+  const s = await requireSession();
+  if (!canAny(s, ps)) redirect('/?msg=' + encodeURIComponent('Your role cannot do that.'));
   return s;
 }

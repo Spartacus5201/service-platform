@@ -9,7 +9,7 @@ import { renderAarPdf } from '@/src/service/pdf';
 
 export async function GET(req: Request) {
   const s = await getSession();
-  if (!s || s.mustChangePassword || !can(s.role, 'edit_documents')) return new NextResponse('Not allowed.', { status: 403 });
+  if (!s || s.mustChangePassword || !can(s, 'job.view')) return new NextResponse('Not allowed.', { status: 403 });
   const sp = new URL(req.url).searchParams; const visit = sp.get('visit'); const document = sp.get('document');
   const db = await getDb();
   try {

@@ -7,7 +7,7 @@ import { CatalogImportForm } from './import-form';
 import { Flash, money, one, type SP } from '../ui';
 
 export default async function Catalog({ searchParams }: { searchParams: SP }) {
-  await requireCan('edit_prices');
+  await requireCan('price.edit');
   const sp = await searchParams;
   const all = await catalogItems(await getDb());
   const q = (one(sp.q) ?? '').trim().toLowerCase();

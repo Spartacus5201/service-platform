@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 import { Badge, Flash, one, us, type SP, type Tone } from '../../ui';
 
 export default async function VisitCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const s = await requireCan('edit_documents');
+  const s = await requireCan('job.view');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const c = await closeoutData(db, id).catch(() => null); if (!c) notFound();
@@ -19,7 +19,7 @@ export default async function VisitCloseout({ params, searchParams }: { params: 
   const subs = (await db.query<{ ref: string | null }>(`SELECT DISTINCT s.id, s.external_ref ref FROM invoice_submission s JOIN invoice_line il ON il.submission_id=s.id JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [id])).rows;
   const invoiced = subs.length > 0;
   const invoiceRef = subs.map((x) => x.ref).filter(Boolean).join(', ');
-  const canInvoice = can(s.role, 'edit_prices');
+  const canInvoice = can(s, 'invoice.manage');
   const log = await corrections(db, id);
   const aar = await aarForVisit(db, id);
   const job = (await db.query<{ id: string; number: number }>(`SELECT j.id, j.number FROM job j JOIN visit v ON v.job_id=j.id WHERE v.id=$1`, [id])).rows[0];

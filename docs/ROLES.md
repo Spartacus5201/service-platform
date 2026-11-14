@@ -1,6 +1,8 @@
 # Roles and permissions: plan
 
-Not built yet. Today the app has four fixed roles (admin, office, coordinator, technician) and eight permissions written into the code. This plan replaces that with roles an admin can change in the app.
+**Status:** steps 1 and 2 are built (permissions in `src/auth/permissions.ts`, roles and the grid in the database, Admin > Roles, several roles per person, migration of today's users). Steps 3 to 5 are still to do. Until step 3, a permission held only for "own" records gives the person what technicians could always do (record service from the unit page) and nothing more; anything that would need "own" filtering stays closed to them.
+
+Built on top of the plan: a `clauses.edit` permission (standard clauses; Manager and Coordinator), and the Admin menu shows each person only the Admin sections their permissions allow (a Coordinator sees Import maps there). Permissions for scheduling, inventory and clients are added when those are built.
 
 ## Built to change
 - **Permissions are small and fixed in code; roles are data.** Each screen and action checks one permission (e.g. `inventory.approve`). Which roles hold which permissions is a grid an Admin edits on one screen; no code change.

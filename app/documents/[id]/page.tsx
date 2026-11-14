@@ -23,8 +23,9 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   const wanted = Number(one(sp.v));
   const v = versions.find((x) => x.version === wanted) ?? versions[0];
   const latest = versions[0];
-  const tech = s.role === 'technician';
-  const canEdit = can(s.role, 'edit_documents'); const canPrice = can(s.role, 'view_prices'); const canSetPrice = can(s.role, 'edit_prices');
+  // Without document.view a person (a technician) sees only issued versions, as the technician copy.
+  const tech = !can(s, 'document.view');
+  const canEdit = can(s, 'document.draft'); const canPrice = can(s, 'price.view') && !tech; const canSetPrice = can(s, 'price.edit') && !tech;
   if (tech && !versions.some((x) => x.status === 'issued')) notFound();
   const qs = canPrice ? await quoteStatus(db, id, today()) : 'not_applicable';
   const base = `/documents/${id}`;

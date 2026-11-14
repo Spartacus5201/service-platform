@@ -10,7 +10,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!s || s.mustChangePassword) return new NextResponse('Not allowed.', { status: 403 });
   const { id } = await ctx.params;
   const kind = new URL(req.url).searchParams.get('kind') === 'invoice' ? 'invoice' : 'notes';
-  if (!can(s.role, kind === 'invoice' ? 'edit_prices' : 'edit_documents')) return new NextResponse('Not allowed.', { status: 403 });
+  if (!can(s, kind === 'invoice' ? 'invoice.manage' : 'job.view')) return new NextResponse('Not allowed.', { status: 403 });
   const db = await getDb();
   try {
     const c = await closeoutData(db, id);

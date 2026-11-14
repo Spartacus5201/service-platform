@@ -15,6 +15,7 @@ import { createJob, attachAudit } from '../jobs/jobs';
 import { synthUnits, synthAutoAudit, synthCim, synthPsr, type SynthOpts } from './synthetic';
 
 export const DEMO_LOGIN = { email: 'demo@example.test', password: 'Demo-Pass-2026' };
+export const DEMO_ROLE_USERS = [['manager', 'Morgan Manager'], ['coordinator', 'Casey Coordinator'], ['scheduler', 'Sam Scheduler'], ['technician', 'Taylor Technician'], ['billing', 'Blake Billing']] as const;
 
 interface Spec { classId: string; name: string; address: string; city: string; installedByUs: boolean; installedOn: string; billingContract: boolean; msa: boolean; seed: number }
 const SPECS: Spec[] = [
@@ -62,7 +63,9 @@ async function seedEquipment(db: Db) {
 }
 
 export async function buildDemo(db: Db): Promise<{ properties: number }> {
-  await createUser(db, { email: DEMO_LOGIN.email, name: 'Demo Admin', role: 'admin', password: DEMO_LOGIN.password, mustChangePassword: false });
+  await createUser(db, { email: DEMO_LOGIN.email, name: 'Demo Admin', roles: ['admin', 'manager'], password: DEMO_LOGIN.password, mustChangePassword: false });
+  // One person per role, same password, to show what each role sees.
+  for (const [role, name] of DEMO_ROLE_USERS) await createUser(db, { email: `${role}@example.test`, name, roles: [role], password: DEMO_LOGIN.password, mustChangePassword: false });
   await seedEquipment(db);
   for (const s of SPECS) {
     const p = await setupProperty(db, s);

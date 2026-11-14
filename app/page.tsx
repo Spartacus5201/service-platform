@@ -15,7 +15,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
   const pq = (one(sp.pq) ?? '').trim();
   const props = await listProperties(db, { q: pq });
   const todayStr = today();
-  const showToday = can(s.role, 'edit_documents');
+  const showToday = can(s, 'document.view');
   const q = showToday ? await todayQueues(db, today()) : null;
   return (
     <>
@@ -43,7 +43,7 @@ export default async function Home({ searchParams }: { searchParams: SP }) {
           </tbody>
         </table>
       </div>
-      {can(s.role, 'import_reports') && (
+      {can(s, 'property.edit') && (
         <form action={createProperty} className="card" style={{ marginTop: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>Add a property</h2>
           <div className="row">

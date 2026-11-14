@@ -10,7 +10,7 @@ import { s, msgOf, isRedirect, domainError } from './form';
 
 // ---------- audit review ----------
 export async function overrideAction(fd: FormData) {
-  const sess = await requireCan('edit_documents');
+  const sess = await requireCan('audit.review');
   const propertyId = s(fd, 'property_id')!; const batchId = s(fd, 'batch_id')!; const readingId = s(fd, 'reading_id')!;
   const back = (extra: string) => `/properties/${propertyId}/audits/${batchId}${s(fd, 'show') === 'all' ? '?show=all&' : '?'}${extra}`;
   const db = await getDb();

@@ -27,7 +27,8 @@ export default async function PropertyPage({ params, searchParams }: { params: P
   const p = await getProperty(db, id);
   if (!p) notFound();
   const [units, imports, docs] = await Promise.all([propertyUnits(db, id), propertyImports(db, id), propertyDocuments(db, id)]);
-  const canImport = can(s.role, 'import_reports'); const canDocs = can(s.role, 'edit_documents'); const canInvoice = can(s.role, 'edit_prices');
+  const canImport = can(s, 'import.run'); const canDocs = can(s, 'document.view'); const canInvoice = can(s, 'invoice.manage');
+  const canDraft = can(s, 'document.draft'); const canRecord = can(s, 'visit.record'); const canEditProp = can(s, 'property.edit'); const canPriceEdit = can(s, 'price.edit');
   const [sys, propPrices] = await Promise.all([getSystemNotes(db, id), getPropertyPrices(db, id)]);
   const priceRows = [...Object.entries(propPrices), ['', ''], ['', '']].slice(0, Math.max(3, Object.keys(propPrices).length + 1));
   const visits = canDocs ? (await db.query<{ id: string; visited_on: string; technician: string | null; notes_status: string; units: string }>(
@@ -63,12 +64,12 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         <p className="small">Latest audit ({us(latest.on)}), flagged units: {(Object.keys(stages) as UnitStage[]).filter((k) => stages[k]).map((k) => `${STAGE_LABEL[k]} ${stages[k]}`).join(' · ')} · <a href={`/properties/${id}/audits/${latest.id}`}>open audit</a></p>
       )}
       {canInvoice && <p><a className="btn secondary" href={`/properties/${id}/invoicing`}>Invoicing →</a></p>}
-      {canDocs && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
+      {canRecord && <p><a className="btn secondary" href={`/properties/${id}/closeout/new`}>Record service report →</a> <a className="btn secondary" href={`/properties/${id}/battery`}>Low battery report{lowCount ? ` (${lowCount})` : ''} →</a></p>}
 
       {equipment.length > 0 && (
         <p className="small">Equipment in the field: {equipment.map((e, i) => (
           <span key={e.code + e.kind}>{i > 0 && ' · '}
-            {e.model ? <a href={`/equipment/${e.model.id}`}>{e.model.manufacturer} {e.code}</a> : <>{e.code} {can(s.role, 'edit_prices') ? <a href={`/equipment/new?model=${encodeURIComponent(e.code)}&kind=${e.kind}`}>(not in registry: add)</a> : '(not in registry)'}</>} ×{e.devices}
+            {e.model ? <a href={`/equipment/${e.model.id}`}>{e.model.manufacturer} {e.code}</a> : <>{e.code} {can(s, 'equipment.edit') ? <a href={`/equipment/new?model=${encodeURIComponent(e.code)}&kind=${e.kind}`}>(not in registry: add)</a> : '(not in registry)'}</>} ×{e.devices}
             {e.model && e.model.status !== 'current' && <> <Badge tone={e.model.status === 'obsolete' ? 'bad' : 'warn'}>{e.model.status === 'obsolete' ? 'obsolete' : 'phasing out'}{e.model.replacedByLabel ? ` → ${e.model.replacedByLabel}` : ''}</Badge></>}
           </span>))}</p>
       )}
@@ -139,7 +140,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
           {!docs.length && <tr><td colSpan={6} className="small">No documents yet. Start one from an audit review{canDocs ? ' or build an RFM below' : ''}.</td></tr>}
         </tbody>
       </table></div>
-      {canDocs && (
+      {canDraft && (
         <form action={(await import('../../server-actions/documents')).createDocumentAction} className="card" style={{ marginTop: '1rem' }}>
           <input type="hidden" name="property_id" value={id} />
           <div className="row">
@@ -197,7 +198,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
       </>)}
 
       {tab === 'settings' && (<>
-      {canDocs && (
+      {canEditProp && (
         <form action={saveSystemNotesAction} className="card" style={{ marginTop: '1.25rem' }}>
           <h2 style={{ marginTop: 0 }}>WA Notes</h2>
           <p className="small">How this property&rsquo;s system is set up and what the technician needs. Printed on the technician copy of every WA and RFM, never on the client copy.</p>
@@ -225,7 +226,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
             <div className="field" style={{ flex: 2 }}><label htmlFor="equipment">Also bring (one per line: quantity | item)</label><textarea id="equipment" name="equipment" defaultValue={equipmentText(sys.equipment)} placeholder="1 | Programmer" /></div>
           </div>
           <p className="small">The technician copy counts transmitters and meters from the document and lists them first, using the names above.</p>
-          {canInvoice && (
+          {canPriceEdit && (
             <>
               <h3>Prices for this property</h3>
               <p className="small">Replace the catalog price (and the default labor charge) on new documents for this property. Leave empty to use the catalog.</p>
@@ -241,7 +242,7 @@ export default async function PropertyPage({ params, searchParams }: { params: P
         </form>
       )}
 
-      {canImport && (
+      {canEditProp && (
         <form action={updateProperty} className="card" style={{ marginTop: '1.25rem' }}>
           <h2 style={{ marginTop: 0 }}>Property details</h2>
           <input type="hidden" name="id" value={id} />

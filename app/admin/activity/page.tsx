@@ -4,7 +4,7 @@ import { listActivity, listUsers } from '@/src/admin/admin';
 import { localTime, one, type SP } from '../../ui';
 
 export default async function Activity({ searchParams }: { searchParams: SP }) {
-  await requireCan('manage_users');
+  await requireCan('activity.view');
   const sp = await searchParams; const db = await getDb();
   const action = one(sp.action) || undefined; const userId = one(sp.user) || undefined; const before = one(sp.before) || undefined;
   const [{ rows, actions, more }, users] = await Promise.all([listActivity(db, { action, userId, before }), listUsers(db)]);

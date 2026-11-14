@@ -4,7 +4,7 @@ import { saveClause } from '../server-actions/catalog';
 import { Badge, Flash, one, type SP } from '../ui';
 
 export default async function Clauses({ searchParams }: { searchParams: SP }) {
-  await requireCan('edit_documents');
+  await requireCan('clauses.edit');
   const sp = await searchParams;
   const rows = (await (await getDb()).query<{ key: string; title: string; body: string; applies_when: { types?: string[]; audience?: string } | null; version: number }>(
     `SELECT DISTINCT ON (key) key,title,body,applies_when,version FROM clause_template WHERE active ORDER BY key, version DESC`)).rows;

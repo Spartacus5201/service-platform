@@ -11,7 +11,7 @@ import { s, n, msgOf, domainError } from './form';
 
 // ---------- catalog and clauses ----------
 export async function saveCatalogItem(fd: FormData) {
-  await requireCan('edit_prices');
+  await requireCan('price.edit');
   const name = s(fd, 'name'); if (!name) redirect(withError('/catalog', 'A name is required.'));
   await (await getDb()).query(
     `INSERT INTO catalog_item (name,description,kind,component,unit,price,effective_from) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
@@ -20,7 +20,7 @@ export async function saveCatalogItem(fd: FormData) {
 }
 
 export async function importCatalogAction(_: CatalogImportUi, fd: FormData): Promise<CatalogImportUi> {
-  const sess = await requireCan('edit_prices');
+  const sess = await requireCan('price.edit');
   const file = fd.get('file');
   if (!(file instanceof File) || file.size === 0) return { error: 'Choose the price list (.xlsx) first.' };
   const apply = s(fd, 'intent') === 'apply';
@@ -41,7 +41,7 @@ export async function importCatalogAction(_: CatalogImportUi, fd: FormData): Pro
 
 /** Mark one catalog item as the part suggested on new drafts for its component (one per component). */
 export async function setSuggestDefaultAction(fd: FormData) {
-  await requireCan('edit_prices');
+  await requireCan('price.edit');
   const id = s(fd, 'id')!; const on = fd.get('on') === '1';
   const db = await getDb();
   await db.transaction(async (tx) => {
@@ -54,7 +54,7 @@ export async function setSuggestDefaultAction(fd: FormData) {
 }
 
 export async function saveClause(fd: FormData) {
-  await requireCan('edit_documents');
+  await requireCan('clauses.edit');
   const key = s(fd, 'key'); const title = s(fd, 'title'); const body = s(fd, 'body');
   if (!key || !title || !body) redirect(withError('/clauses', 'Key, title, and text are required.'));
   const types = fd.getAll('types').map(String).filter((t) => ['WA', 'Proposal', 'RFM'].includes(t));

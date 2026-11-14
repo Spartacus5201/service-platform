@@ -12,7 +12,7 @@ const ACTIONS = [['inspect_test', 'Inspect / test'], ['repair', 'Repair'], ['rep
 const RESULTS = [['', '(from action)'], ['repaired', 'Repaired'], ['replaced', 'Replaced'], ['reprogrammed', 'Reprogrammed'], ['no_fault_found', 'No fault found'], ['unable_to_access', 'Unable to access'], ['unable_to_complete', 'Unable to complete'], ['other', 'Other']];
 
 export default async function NewCloseout({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  await requireCan('edit_documents');
+  await requireCan('visit.record');
   const { id } = await params; const sp = await searchParams;
   const db = await getDb();
   const p = await getProperty(db, id); if (!p) notFound();

@@ -6,7 +6,7 @@ import { Flash, one, us, daysSince, type SP } from '../ui';
 import { StageBadge } from './stage';
 
 export default async function Jobs({ searchParams }: { searchParams: SP }) {
-  await requireCan('edit_documents');
+  await requireCan('job.view');
   const sp = await searchParams;
   const db = await getDb();
   const property = one(sp.property);
