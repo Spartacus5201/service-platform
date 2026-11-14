@@ -68,8 +68,11 @@ export async function importInventory(db: Db, bytes: Uint8Array, asOf: string, a
         }
       } else {
         res.unchanged++;
-        if (apply) await q.query(`UPDATE catalog_item SET vendor=$2, notes=$3, active=$4 WHERE id=$1`, [cur.id, vendor, notes, !obsolete]);
+        if (apply) await q.query(`UPDATE catalog_item SET vendor=$2, notes=$3 WHERE id=$1`, [cur.id, vendor, notes]);
       }
+      // Obsolete (or back in use) applies to the part, so every price row of it says the same.
+      if (apply && cur) await q.query(`UPDATE catalog_item SET active=$4 WHERE source='inventory' AND lower(coalesce(part_type,''))=lower($1) AND lower(name)=lower($2) AND lower(coalesce(part_number,''))=lower($3)`,
+        [partType ?? '', name, partNo ?? '', !obsolete]);
     }
   };
   if (apply) await db.transaction(async (tx) => run(tx as unknown as Db)); else await run(db);

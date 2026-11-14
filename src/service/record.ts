@@ -1,6 +1,7 @@
 // Recording service work. Events are append-only: a correction is a new event that supersedes the old one.
 import type { Db } from '../db';
-import { coverage, type ServiceVisit } from '../rules/warranty';
+import { LIVE_EVENT } from '../sql';
+import { touchesFor, coverageFor, recalcCoverage } from './coverage';
 import { loadSettings } from '../queries/audit';
 
 export class ServiceError extends Error {}
@@ -51,8 +52,7 @@ export interface RecordResult { visitId: string; eventIds: string[]; warnings: s
 type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
 
-/** Service events that still stand (not replaced by a correction). */
-export const LIVE_EVENT = `(NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id))`;
+export { LIVE_EVENT } from '../sql';
 
 export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResult> {
   if (!input.events.length) throw new ServiceError('A visit needs at least one event.');
@@ -90,17 +90,11 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
         `SELECT b.property_id FROM endpoint e JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id WHERE e.id=$1`, [e.endpointId]);
       if (!ep || ep.property_id !== input.propertyId) throw new ServiceError('Endpoint does not belong to this property.');
 
-      // Warranty position as of this visit, from history strictly before it.
-      const prior = await tx.query<{ visited_on: string; outcome: ServiceVisit['outcome'] }>(
-        `SELECT DISTINCT v.visited_on::text, v.outcome FROM service_event se JOIN visit v ON v.id=se.visit_id
-          WHERE se.endpoint_id=$1 AND ${LIVE_EVENT}`, [e.endpointId]);
+      // Warranty position as of this visit, from history strictly before it (coverage() ignores the visit's own date).
+      const prior = (await touchesFor(tx, [e.endpointId], { excludeVisitId: visitId })).get(e.endpointId) ?? [];
       const oldDevices = await resolveOldDevices(tx, e);
       const partInstalledOn = oldDevices.map((d) => d?.service_installed_on ?? null).filter(Boolean).sort().pop() ?? null;
-      const cov = coverage({
-        installedByUs: prop.installed_by_us, installCompletedOn: prop.install_completed_on,
-        endpointVisits: prior.rows.map((r) => ({ date: r.visited_on, outcome: r.outcome })),
-        visitDate: input.visitedOn, devicePartInstalledOn: partInstalledOn,
-      }, warranty);
+      const cov = coverageFor({ installedByUs: prop.installed_by_us, installCompletedOn: prop.install_completed_on }, prior, input.visitedOn, partInstalledOn, warranty);
 
       const ev = await one<{ id: string }>(tx,
         `INSERT INTO service_event (visit_id,endpoint_id,action,issue_code,read_at_service,notes,created_by,labor_covered,part_covered,coverage_basis,result,end_read)
@@ -114,6 +108,13 @@ export async function recordVisit(db: Db, input: VisitInput): Promise<RecordResu
       }
     }
   });
+  // A back-dated visit can change the warranty of later visits at the same units.
+  const later = await db.query<{ n: string }>(`SELECT count(*) n FROM service_event se JOIN visit v ON v.id=se.visit_id
+     WHERE se.endpoint_id = ANY($1) AND v.visited_on > $2 AND ${LIVE_EVENT}`, [input.events.map((e) => e.endpointId), input.visitedOn]);
+  if (Number(later.rows[0].n)) {
+    const r = await recalcCoverage(db, input.events.map((e) => e.endpointId), input.visitedOn, warranty, input.createdBy ?? null);
+    if (r.review.length) warnings.push(`${r.review.length} later invoiced service entr${r.review.length === 1 ? 'y' : 'ies'} would now have different warranty coverage; check them.`);
+  }
   // A recorded swap may settle an ID mismatch an import reported.
   await (await import('../import/issues')).autoResolve(db, input.propertyId);
   return { visitId, eventIds, warnings };
@@ -163,6 +164,11 @@ export interface EventPatch { issueCode?: string | null; notes?: string | null; 
 
 /** Correct an event without losing the original. Refused once invoiced, and for replace events (their parts moved devices). */
 export async function correctEvent(db: Db, eventId: string, patch: EventPatch, userId?: string | null, reason?: string | null): Promise<string> {
+  // One transaction: two corrections of the same event at once cannot both succeed (and a unique index backs this up).
+  return db.transaction((tx) => correctEventIn(tx, eventId, patch, userId, reason));
+}
+
+export async function correctEventIn(db: Q, eventId: string, patch: EventPatch, userId?: string | null, reason?: string | null): Promise<string> {
   const ev = await one<{ id: string; visit_id: string; endpoint_id: string; action: Action; issue_code: string | null; read_at_service: string | null; notes: string | null; result: Result | null; end_read: string | null;
     labor_covered: boolean; part_covered: boolean; coverage_basis: string[]; live: boolean }>(db,
     `SELECT se.*, ${LIVE_EVENT} AS live FROM service_event se WHERE se.id=$1`, [eventId]);
@@ -184,5 +190,10 @@ export async function correctEvent(db: Db, eventId: string, patch: EventPatch, u
   await db.query(`INSERT INTO event_note (service_event_id,client_comment,extra_comment,updated_by) SELECT $2, client_comment, extra_comment, $3 FROM event_note WHERE service_event_id=$1`, [ev.id, next!.id, userId ?? null]);
   await db.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'event_corrected','service_event',$2,$3)`,
     [userId ?? null, next!.id, JSON.stringify({ supersedes: ev.id, visit_id: ev.visit_id, patch, reason: reason ?? null })]);
+  // A unit result of unable to access / complete decides whether the visit counts for warranty at this unit.
+  if (('result' in patch && patch.result !== ev.result) || (patch.action && patch.action !== ev.action)) {
+    const on = (await one<{ on: string }>(db, `SELECT visited_on::text "on" FROM visit WHERE id=$1`, [ev.visit_id]))!.on;
+    await recalcCoverage(db, [ev.endpoint_id], on, (await loadSettings(db)).warranty, userId ?? null);
+  }
   return next!.id;
 }

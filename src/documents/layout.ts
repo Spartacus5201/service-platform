@@ -29,7 +29,7 @@ export function groupWork(lines: FrozenLine[]): WorkGroup[] {
 }
 
 export interface Totals { items: number; shipping: number; total: number }
-export function totals(c: FrozenContent): Totals {
+export function totals(c: Pick<FrozenContent, 'type' | 'shipping' | 'lines'>): Totals {
   const items = r2(c.lines.reduce((s, l) => s + lineTotal(l), 0));
   const shipping = c.type === 'Proposal' ? (c.shipping ?? 0) : 0;
   return { items, shipping, total: r2(items + shipping) };

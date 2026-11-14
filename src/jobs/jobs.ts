@@ -4,7 +4,8 @@
 // Authorization and scheduling live on the Salesforce case; salesforce_status mirrors it.
 import type { Db } from '../db';
 import { aarForVisit, type AarOutcome } from '../service/aar';
-import { lineTotal } from '../documents/render';
+import { documentTotal, type FrozenContent } from '../documents/render';
+import { totals } from '../documents/layout';
 
 type Q = Pick<Db, 'query'>;
 export class JobError extends Error {}
@@ -113,8 +114,9 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
        FROM import_batch b WHERE b.job_id=$1 ORDER BY b.imported_at`, [id])).rows;
   for (const a of audits) tl.push({ on: a.on, what: 'Audit imported', detail: [a.ended ? `period ending ${a.ended.slice(5, 7)}/${a.ended.slice(8, 10)}/${a.ended.slice(0, 4)}` : null, a.filename].filter(Boolean).join(' · ') || undefined, href: `/properties/${j.property_id}/audits/${a.id}` });
 
-  const docs = (await db.query<{ id: string; type: string; number: string; title: string | null; created_on: string; issued_on: string | null; version_id: string }>(
-    `SELECT d.id, d.type, d.number, d.title, d.created_on::text,
+  const docs = (await db.query<{ id: string; type: string; number: string; title: string | null; created_on: string; issued_on: string | null; version_id: string; shipping: string | null; frozen: FrozenContent | null }>(
+    `SELECT d.id, d.type, d.number, d.title, d.created_on::text, d.shipping::text,
+            (SELECT v.frozen_content FROM document_version v WHERE v.document_id=d.id AND v.status='issued' ORDER BY v.version DESC LIMIT 1) frozen,
             (SELECT min(v.issued_at)::date::text FROM document_version v WHERE v.document_id=d.id AND v.status='issued') issued_on,
             COALESCE((SELECT v.id FROM document_version v WHERE v.document_id=d.id AND v.status='issued' ORDER BY v.version DESC LIMIT 1),
                      (SELECT v.id FROM document_version v WHERE v.document_id=d.id ORDER BY v.version DESC LIMIT 1)) version_id
@@ -123,9 +125,10 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
   for (const d of docs) {
     const lines = (await db.query<{ quantity: string; unit_price: string | null; labor_price: string | null; labor_covered: boolean; part_covered: boolean; include: boolean }>(
       `SELECT quantity::text, unit_price::text, labor_price::text, labor_covered, part_covered, include FROM document_line WHERE version_id=$1`, [d.version_id])).rows;
-    const quoted = d.type === 'RFM' ? 0 : lines.reduce((s, l) => s + lineTotal({ building: null, unit: null, address: null, service: null, issueCode: null, description: '', component: null,
+    // The same total the document shows: the issued version as frozen, or the draft's lines plus a Proposal's shipping.
+    const quoted = d.type === 'RFM' ? 0 : d.frozen ? documentTotal(d.frozen) : totals({ type: d.type as FrozenContent['type'], shipping: d.shipping === null ? null : Number(d.shipping), lines: lines.map((l) => ({ building: null, unit: null, address: null, service: null, issueCode: null, description: '', component: null,
       quantity: Number(l.quantity), unitPrice: l.unit_price === null ? null : Number(l.unit_price), laborPrice: l.labor_price === null ? null : Number(l.labor_price),
-      laborCovered: l.labor_covered, partCovered: l.part_covered, include: l.include }), 0);
+      laborCovered: l.labor_covered, partCovered: l.part_covered, include: l.include })) }).total;
     documents.push({ id: d.id, type: d.type, number: d.number, title: d.title, issued: !!d.issued_on, createdOn: d.created_on, quoted: Math.round(quoted * 100) / 100 });
     tl.push({ on: d.created_on, what: `${d.type} drafted`, detail: d.number, href: `/documents/${d.id}` });
     if (d.issued_on) tl.push({ on: d.issued_on, what: `${d.type} issued`, detail: d.number, href: `/documents/${d.id}` });
@@ -145,7 +148,9 @@ export async function jobDetail(db: Db, id: string): Promise<JobDetail | null> {
               sum(CASE WHEN il.billable THEN il.amount * 1 ELSE 0 END)::text amount,
               (SELECT count(*) FROM service_event se WHERE se.visit_id=$1 AND NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event x WHERE x.supersedes=se.id)
                   AND NOT EXISTS (SELECT 1 FROM invoice_line l2 WHERE l2.service_event_id=se.id))::text open
-         FROM invoice_line il JOIN invoice_submission s ON s.id=il.submission_id JOIN service_event se ON se.id=il.service_event_id WHERE se.visit_id=$1`, [v.id])).rows[0];
+         FROM invoice_line il JOIN invoice_submission s ON s.id=il.submission_id
+         JOIN service_event se ON se.id = COALESCE(il.service_event_id, (SELECT ep.service_event_id FROM event_part ep WHERE ep.id=il.event_part_id))
+        WHERE se.visit_id=$1`, [v.id])).rows[0];
     const invoiced = !!inv?.submitted_on;
     invoicedTotal += Number(inv?.amount ?? 0);
     if (Number(v.units) > 0 && v.notes_status !== 'approved') draftNotes = true;

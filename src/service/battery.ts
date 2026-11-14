@@ -7,6 +7,7 @@
 //   pm_wa_threshold (percent at or below which a low battery goes on the WA for service, default 1),
 //   pm_battery_price (battery price when the catalog has no battery for the transmitter model, default 9.10).
 import type { Db } from '../db';
+import { CATALOG_AS_OF } from '../sql';
 
 type Q = Pick<Db, 'query'>;
 export const PM_DESCRIPTION = 'Preventative Maintenance - Transmitter Battery Replacement';
@@ -37,7 +38,7 @@ export async function batteryFor(q: Q, model: string | null, asOf: string, pm?: 
   const reg = await batteryForModel(q, model, asOf);
   if (reg && reg.price !== null) return { itemId: reg.id, price: reg.price, name: reg.name };
   const item = model ? (await q.query<{ id: string; name: string; price: string | null }>(
-    `SELECT id, name, price::text FROM catalog_item WHERE kind='part' AND component='battery' AND active AND effective_from <= $2
+    `SELECT id, name, price::text FROM ${CATALOG_AS_OF('$2')} c WHERE kind='part' AND component='battery' AND active
         AND position(lower($1) in lower(name || ' ' || COALESCE(part_number,''))) > 0 ORDER BY effective_from DESC LIMIT 1`, [model, asOf])).rows[0] : undefined;
   return { itemId: item?.id ?? null, price: item?.price !== undefined && item?.price !== null ? Number(item.price) : s.batteryPrice, name: item?.name ?? 'Transmitter battery' };
 }

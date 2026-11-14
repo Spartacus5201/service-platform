@@ -1,5 +1,6 @@
 import type { Db } from '../db';
 import { LIVE_EVENT } from './record';
+import { touchesFor } from './coverage';
 import { coverage, type Coverage } from '../rules/warranty';
 import { loadSettings } from '../queries/audit';
 
@@ -72,7 +73,7 @@ export async function endpointHistory(db: Db, endpointId: string, asOf: string):
   const currentPartInstall = devices.rows.filter((d) => d.origin === 'service' && d.removed_on === null).map((d) => d.installed_on).filter(Boolean).sort().pop() ?? null;
   const cov = coverage({
     installedByUs: e.installed_by_us, installCompletedOn: e.install_completed_on,
-    endpointVisits: events.rows.map((x) => ({ date: x.visited_on, outcome: x.outcome as 'completed' })), visitDate: asOf, devicePartInstalledOn: currentPartInstall,
+    endpointVisits: (await touchesFor(db, [endpointId])).get(endpointId) ?? [], visitDate: asOf, devicePartInstalledOn: currentPartInstall,
   }, warranty);
   // coverage() ignores visits on asOf itself; fine for "as of today" on a day without a visit.
   return {

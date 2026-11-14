@@ -1,6 +1,8 @@
 // Document builder: WA, Proposal, RFM. Drafts are editable; issuing freezes a version; edits after that start the next version.
 import type { Db } from '../db';
 import { replacementFor } from '../equipment/registry';
+import { CATALOG_AS_OF } from '../sql';
+import { propertyPartPrice } from './pricing';
 import { auditLines, needsAction } from '../queries/audit';
 import { mergeFields, type FrozenContent, type FrozenLine } from './render';
 import { renderPdf } from './pdf';
@@ -75,12 +77,12 @@ export function workLabel(code: string, rec: { action: string; reason: string })
   return WORK_LABEL[code] ?? `${rec.action}: ${rec.reason}`;
 }
 
-/** Cheapest current catalog part for a component, as of a date. Null when the catalog has none. */
+/** The suggested current catalog part for a component, as of a date (newest priced, active). Null when there is none. */
 async function suggestItem(q: Q, component: string | null, asOf: string) {
   if (!component || component === 'manual_pick') return null;
   const comp = component === 'both' ? 'combo' : component;
   return one<{ id: string; name: string; price: string | null }>(q,
-    `SELECT id, name, price::text FROM catalog_item WHERE kind='part' AND component=$1 AND active AND (source IS NULL OR suggest_default) AND effective_from <= $2 ORDER BY effective_from DESC, name LIMIT 1`, [comp, asOf]);
+    `SELECT id, name, price::text FROM ${CATALOG_AS_OF('$2')} c WHERE kind='part' AND component=$1 AND active AND (source IS NULL OR suggest_default) ORDER BY effective_from DESC, name LIMIT 1`, [comp, asOf]);
 }
 
 /** Default labor charge per unit (setting labor_rate, $85 unless changed). */
@@ -91,6 +93,10 @@ export async function laborRate(q: Q): Promise<number> {
 
 export async function createDocument(db: Db, input: NewDocument): Promise<Created> {
   if (input.type !== 'Proposal' && input.actsAs) throw new DocumentError('Only a Proposal can act as another document type.');
+  if (input.fromAuditBatch) {
+    const b = await one<{ property_id: string }>(db, `SELECT property_id FROM import_batch WHERE id=$1`, [input.fromAuditBatch]);
+    if (!b || b.property_id !== input.propertyId) throw new DocumentError('That audit belongs to another property.');
+  }
   const inv = await invoicingFor(db, input.propertyId, input.createdOn);
   let lines = 0;
   let out!: Created;
@@ -116,7 +122,7 @@ export async function createDocument(db: Db, input: NewDocument): Promise<Create
         // Only Needs Service implies a part; Investigate and Verify ID stay unpriced until the office decides.
         const item = l.recommendation.action === 'Needs Service' ? await suggestItem(tx, l.recommendation.component ?? null, input.createdOn) : null;
         const labor = l.recommendation.action === 'Needs Service' ? laborDefault : null;
-        const own = l.recommendation.action === 'Needs Service' ? (l.recommendation.component === 'transmitter' ? propPrices.Transmitter : l.recommendation.component === 'meter' ? propPrices.Meter : undefined) : undefined;
+        const own = l.recommendation.action === 'Needs Service' ? propertyPartPrice(propPrices, l.recommendation.component) : undefined;
         let part = own ?? (item?.price ?? null); let itemId = item?.id ?? null; let component: string | null = l.recommendation.component ?? null;
         // A transmitter that stopped with a flat battery needs a battery, not a new transmitter.
         if (l.recommendation.action === 'Needs Service' && component === 'transmitter' && forWa(l.lowBattery, pm)) {

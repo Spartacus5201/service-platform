@@ -1,8 +1,9 @@
 import type { Db } from '../db';
+import { touchesFor, serviceInstalls, partDate } from '../service/coverage';
 import { recommend, normalizeCode, type Recommendation, type AuditSettings } from '../rules/audit';
-import { coverage, type Coverage, type WarrantySettings, DEFAULT_WARRANTY, type ServiceVisit } from '../rules/warranty';
+import { coverage, type Coverage, type WarrantySettings, DEFAULT_WARRANTY } from '../rules/warranty';
 
-export async function loadSettings(db: Db): Promise<{ audit: AuditSettings; warranty: WarrantySettings }> {
+export async function loadSettings(db: Pick<Db, 'query'>): Promise<{ audit: AuditSettings; warranty: WarrantySettings }> {
   const r = await db.query<{ key: string; value: unknown }>(`SELECT key, value FROM setting`);
   const s = Object.fromEntries(r.rows.map((x) => [x.key, Number(x.value)]));
   return {
@@ -65,18 +66,10 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
        FROM audit_override o LEFT JOIN app_user u ON u.id=o.user_id WHERE o.reading_id IN (SELECT id FROM audit_reading WHERE import_batch_id=$1)`, [batchId]);
   const overrides = new Map(ovr.rows.map((o) => [o.reading_id, o]));
 
-  const visits = await db.query<{ endpoint_id: string; visited_on: string; outcome: ServiceVisit['outcome'] }>(
-    `SELECT DISTINCT se.endpoint_id, v.visited_on::text, v.outcome
-       FROM service_event se JOIN visit v ON v.id=se.visit_id
-      WHERE se.endpoint_id IN (SELECT endpoint_id FROM audit_reading WHERE import_batch_id=$1)
-        AND NOT se.voided AND NOT EXISTS (SELECT 1 FROM service_event s2 WHERE s2.supersedes = se.id)`, [batchId]);
-  const byEndpoint = new Map<string, ServiceVisit[]>();
-  visits.rows.forEach((v) => byEndpoint.set(v.endpoint_id, [...(byEndpoint.get(v.endpoint_id) ?? []), { date: v.visited_on, outcome: v.outcome }]));
-
-  const partInstalls = await db.query<{ endpoint_id: string; installed_on: string }>(
-    `SELECT endpoint_id, max(installed_on)::text installed_on FROM installation
-      WHERE origin='service' AND endpoint_id IN (SELECT endpoint_id FROM audit_reading WHERE import_batch_id=$1) GROUP BY endpoint_id`, [batchId]);
-  const partOn = new Map(partInstalls.rows.map((x) => [x.endpoint_id, x.installed_on]));
+  // Warranty inputs come from the same functions recording a visit uses, so quote and invoice agree.
+  const epIds = [...new Set(rows.rows.map((r) => r.endpoint_id))];
+  const byEndpoint = await touchesFor(db, epIds);
+  const installs = await serviceInstalls(db, epIds);
 
   const { lowBatteryDevices } = await import('../service/battery');
   const low = new Map((await lowBatteryDevices(db, { endpointIds: [...new Set(rows.rows.map((r) => r.endpoint_id))] }))
@@ -93,7 +86,7 @@ export async function auditLines(db: Db, batchId: string, asOf: string): Promise
       : rules;
     const cov = coverage({
       installedByUs: r.installed_by_us, installCompletedOn: r.install_completed_on,
-      endpointVisits: byEndpoint.get(r.endpoint_id) ?? [], visitDate: asOf, devicePartInstalledOn: partOn.get(r.endpoint_id) ?? null,
+      endpointVisits: byEndpoint.get(r.endpoint_id) ?? [], visitDate: asOf, devicePartInstalledOn: partDate(installs.get(r.endpoint_id), rec.component, asOf),
     }, warranty);
     return {
       readingId: r.id, endpointId: r.endpoint_id, building: r.building, unit: r.unit, service: r.service_code, code,

@@ -5,6 +5,8 @@ import { LIVE_EVENT, type Result } from './record';
 import { defaultResult, issueLabel, suggestComment } from './phrases';
 import { invoicingFor, laborRate, CHARGE_CODES, WORK_LABEL, type ChargeCode } from '../documents/build';
 import { getPropertyPrices } from '../documents/systemnotes';
+import { propertyPartPrice } from '../documents/pricing';
+import { currentPart } from '../equipment/registry';
 import { groupWork, type WorkGroup } from '../documents/layout';
 import type { FrozenLine } from '../documents/render';
 
@@ -126,6 +128,10 @@ export async function approveCloseout(db: Db, visitId: string, userId: string | 
 export async function addPhoto(db: Db, visitId: string, p: { endpointId?: string | null; filename: string; mime: string; bytes: Uint8Array; caption?: string | null; includeInClient?: boolean }) {
   if (!/^image\/(jpeg|png)$/.test(p.mime)) throw new CloseoutError('Photos must be JPEG or PNG.');
   if (p.bytes.length > 8 * 1024 * 1024) throw new CloseoutError('A photo can be at most 8 MB.');
+  if (p.endpointId) {
+    const ok = await db.query(`SELECT 1 FROM service_event se WHERE se.visit_id=$1 AND se.endpoint_id=$2`, [visitId, p.endpointId]);
+    if (!ok.rows.length) throw new CloseoutError('That unit is not on this visit.');
+  }
   await db.query(`INSERT INTO visit_photo (visit_id,endpoint_id,filename,mime,bytes,caption,include_in_client) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [visitId, p.endpointId ?? null, p.filename.replace(/[^\w.\- ]+/g, '_'), p.mime, p.bytes, p.caption?.trim() || null, p.includeInClient ?? false]);
   await db.query(`UPDATE visit SET notes_status='draft', approved_by=NULL, approved_at=NULL WHERE id=$1 AND notes_status='approved'`, [visitId]);
@@ -143,7 +149,6 @@ export interface InvoiceSheet {
   items: { eventId: string; laborAmount: number; partAmounts: Record<string, number> }[];
 }
 
-const PROPERTY_PRICE_ITEM: Record<string, string> = { transmitter: 'Transmitter', meter: 'Meter', combo: 'Transmitter' };
 
 export async function invoiceSheet(db: Db, visitId: string): Promise<InvoiceSheet> {
   const c = await closeoutData(db, visitId);
@@ -151,17 +156,21 @@ export async function invoiceSheet(db: Db, visitId: string): Promise<InvoiceShee
   if (c.visit.outcome !== 'completed') warnings.push('This visit was not completed, so there is nothing to invoice.');
   const prices = await getPropertyPrices(db, c.property.id);
   const labor = prices['Labor'] ?? (await laborRate(db));
-  const parts = await db.query<{ id: string; service_event_id: string; kind: string; quantity: string; price: string | null; name: string | null }>(
-    `SELECT ep.id, ep.service_event_id, d.kind, ep.quantity::text, ci.price::text, ci.name
-       FROM event_part ep JOIN device d ON d.id=ep.new_device_id LEFT JOIN catalog_item ci ON ci.id=ep.catalog_item_id
-      WHERE ep.service_event_id = ANY($1::uuid[])`, [c.units.map((u) => u.eventId)]);
+  const parts = { rows: [] as { id: string; service_event_id: string; kind: string; quantity: string; price: string | null; name: string | null }[] };
+  for (const p of (await db.query<{ id: string; service_event_id: string; kind: string; quantity: string; item: string | null }>(
+    `SELECT ep.id, ep.service_event_id, d.kind, ep.quantity::text, ep.catalog_item_id item
+       FROM event_part ep JOIN device d ON d.id=ep.new_device_id WHERE ep.service_event_id = ANY($1::uuid[])`, [c.units.map((u) => u.eventId)])).rows) {
+    // The catalog part at its price on the visit date (a later price change does not reach back).
+    const cur = await currentPart(db, p.item, c.visit.visitedOn);
+    parts.rows.push({ id: p.id, service_event_id: p.service_event_id, kind: p.kind, quantity: p.quantity, price: cur?.price === null || cur?.price === undefined ? null : String(cur.price), name: cur?.name ?? null });
+  }
   const lines: FrozenLine[] = []; const items: InvoiceSheet['items'] = [];
   for (const u of c.units) {
     const ps = parts.rows.filter((x) => x.service_event_id === u.eventId);
     const partAmounts: Record<string, number> = {};
     let partTotal = 0; let missing = false;
     for (const p of ps) {
-      const unitPrice = prices[PROPERTY_PRICE_ITEM[p.kind]] ?? (p.price === null ? null : Number(p.price));
+      const unitPrice = propertyPartPrice(prices, p.kind) ?? (p.price === null ? null : Number(p.price));
       if (unitPrice === null) { missing = true; partAmounts[p.id] = 0; continue; }
       partAmounts[p.id] = Math.round(unitPrice * Number(p.quantity) * 100) / 100; partTotal += partAmounts[p.id];
     }

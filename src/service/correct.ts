@@ -1,9 +1,9 @@
 // Fixing recorded service. Nothing is deleted: events are superseded or voided, visit and device fields are changed
 // with a reason, and every change is written to the audit log and shown on the visit.
 import type { Db } from '../db';
-import { coverage } from '../rules/warranty';
 import { loadSettings } from '../queries/audit';
-import { correctEvent, LIVE_EVENT, ServiceError, type EventPatch, type Outcome } from './record';
+import { correctEventIn, LIVE_EVENT, ServiceError, type EventPatch, type Outcome } from './record';
+import { recalcCoverage, type Recalc } from './coverage';
 
 type Q = Pick<Db, 'query'>;
 const one = async <T>(q: Q, sql: string, p: unknown[] = []) => (await q.query<T>(sql, p)).rows[0] as T | undefined;
@@ -16,43 +16,52 @@ const isInvoiced = async (q: Q, eventId: string) => !!(await one(q, `SELECT 1 FR
 
 /** Correct a non-replace event, with a reason. Returns the new event id. */
 export async function correctEventWithReason(db: Db, eventId: string, patch: EventPatch, reason: string, userId: string | null): Promise<string> {
+  return db.transaction((tx) => correctEventWithReasonIn(tx, eventId, patch, reason, userId));
+}
+async function correctEventWithReasonIn(q: Q, eventId: string, patch: EventPatch, reason: string, userId: string | null): Promise<string> {
   const r = need(reason);
-  const next = await correctEvent(db, eventId, patch, userId, r);
-  const v = await one<{ visit_id: string }>(db, `SELECT visit_id FROM service_event WHERE id=$1`, [next]);
-  await reopenNotes(db, v!.visit_id);
+  const next = await correctEventIn(q, eventId, patch, userId, r);
+  const v = await one<{ visit_id: string }>(q, `SELECT visit_id FROM service_event WHERE id=$1`, [next]);
+  await reopenNotes(q, v!.visit_id);
   return next;
 }
 
 /** Remove an event that should never have been recorded. A replace event is reversed: the old device is back in service. */
-export async function voidEvent(db: Db, eventId: string, reason: string, userId: string | null): Promise<void> {
+export async function voidEvent(db: Db, eventId: string, reason: string, userId: string | null): Promise<Recalc> {
+  return db.transaction((tx) => voidEventIn(tx, eventId, reason, userId));
+}
+async function voidEventIn(tx: Q, eventId: string, reason: string, userId: string | null): Promise<Recalc> {
   const r = need(reason);
-  const ev = await one<{ id: string; visit_id: string; endpoint_id: string; live: boolean; visited_on: string }>(db,
+  const ev = await one<{ id: string; visit_id: string; endpoint_id: string; live: boolean; visited_on: string }>(tx,
     `SELECT se.id, se.visit_id, se.endpoint_id, ${LIVE_EVENT} AS live, v.visited_on::text FROM service_event se JOIN visit v ON v.id=se.visit_id WHERE se.id=$1`, [eventId]);
   if (!ev) throw new ServiceError('Unknown event.');
   if (!ev.live) throw new ServiceError('That event was already corrected or voided.');
-  if (await isInvoiced(db, eventId)) throw new ServiceError('This event has been invoiced and can no longer be voided.');
-  await db.transaction(async (tx) => {
-    const parts = (await tx.query<{ old_device_id: string | null; new_device_id: string }>(`SELECT old_device_id, new_device_id FROM event_part WHERE service_event_id=$1`, [eventId])).rows;
-    for (const p of parts) {
-      const gone = await one(tx, `SELECT 1 FROM installation WHERE device_id=$1 AND removed_on IS NOT NULL`, [p.new_device_id]);
-      if (gone) throw new ServiceError('The part installed by this event has since been replaced, so the event cannot be voided. Record a correcting visit instead.');
+  if (await isInvoiced(tx, eventId)) throw new ServiceError('This event has been invoiced and can no longer be voided.');
+  const parts = (await tx.query<{ old_device_id: string | null; new_device_id: string }>(`SELECT old_device_id, new_device_id FROM event_part WHERE service_event_id=$1`, [eventId])).rows;
+  for (const p of parts) {
+    const gone = await one(tx, `SELECT 1 FROM installation WHERE device_id=$1 AND removed_on IS NOT NULL`, [p.new_device_id]);
+    if (gone) throw new ServiceError('The part installed by this event has since been replaced, so the event cannot be voided. Record a correcting visit instead.');
+  }
+  for (const p of parts) {
+    await tx.query(`UPDATE installation SET removed_on=$2 WHERE device_id=$1 AND removed_on IS NULL`, [p.new_device_id, ev.visited_on]);
+    await tx.query(`UPDATE device SET status='removed' WHERE id=$1`, [p.new_device_id]);
+    if (p.old_device_id) {
+      await tx.query(`UPDATE installation SET removed_on=NULL WHERE device_id=$1 AND endpoint_id=$2 AND removed_on=$3`, [p.old_device_id, ev.endpoint_id, ev.visited_on]);
+      await tx.query(`UPDATE device SET status='active' WHERE id=$1`, [p.old_device_id]);
     }
-    for (const p of parts) {
-      await tx.query(`UPDATE installation SET removed_on=$2 WHERE device_id=$1 AND removed_on IS NULL`, [p.new_device_id, ev.visited_on]);
-      await tx.query(`UPDATE device SET status='removed' WHERE id=$1`, [p.new_device_id]);
-      if (p.old_device_id) {
-        await tx.query(`UPDATE installation SET removed_on=NULL WHERE device_id=$1 AND endpoint_id=$2 AND removed_on=$3`, [p.old_device_id, ev.endpoint_id, ev.visited_on]);
-        await tx.query(`UPDATE device SET status='active' WHERE id=$1`, [p.old_device_id]);
-      }
-    }
-    await tx.query(`UPDATE service_event SET voided=true, void_reason=$2 WHERE id=$1`, [eventId, r]);
-    await reopenNotes(tx, ev.visit_id);
-    await log(tx, userId, 'event_voided', 'service_event', eventId, { visit_id: ev.visit_id, reason: r });
-  });
+  }
+  await tx.query(`UPDATE service_event SET voided=true, void_reason=$2 WHERE id=$1`, [eventId, r]);
+  await reopenNotes(tx, ev.visit_id);
+  await log(tx, userId, 'event_voided', 'service_event', eventId, { visit_id: ev.visit_id, reason: r });
+  // Later visits at this unit may have counted on this one for warranty.
+  return recalcCoverage(tx, [ev.endpoint_id], ev.visited_on, (await loadSettings(tx)).warranty, userId);
 }
 
 /** Fix the ID of a part a replace event installed (the usual typo). Allowed after invoicing: billing does not depend on it. */
 export async function correctPartId(db: Db, eventId: string, newHardwareId: string, reason: string, userId: string | null, kind?: string): Promise<void> {
+  return db.transaction((tx) => correctPartIdIn(tx, eventId, newHardwareId, reason, userId, kind));
+}
+async function correctPartIdIn(db: Q, eventId: string, newHardwareId: string, reason: string, userId: string | null, kind?: string): Promise<void> {
   const r = need(reason);
   const id = newHardwareId.trim();
   if (!id) throw new ServiceError('Enter the corrected ID.');
@@ -64,17 +73,22 @@ export async function correctPartId(db: Db, eventId: string, newHardwareId: stri
   if (part.hardware_id === id) return;
   const dup = await one(db, `SELECT 1 FROM device WHERE property_id=$1 AND kind=$2 AND hardware_id=$3 AND status='active' AND id<>$4`, [part.property_id, part.kind, id, part.device_id]);
   if (dup) throw new ServiceError(`A ${part.kind} with ID ${id} is already active at this property.`);
-  await db.transaction(async (tx) => {
-    await tx.query(`UPDATE device SET hardware_id=$2 WHERE id=$1`, [part.device_id, id]);
-    await reopenNotes(tx, part.visit_id);
-    await log(tx, userId, 'part_id_corrected', 'device', part.device_id, { visit_id: part.visit_id, event_id: eventId, from: part.hardware_id, to: id, reason: r });
-  });
+  await db.query(`UPDATE device SET hardware_id=$2 WHERE id=$1`, [part.device_id, id]);
+  await reopenNotes(db, part.visit_id);
+  await log(db, userId, 'part_id_corrected', 'device', part.device_id, { visit_id: part.visit_id, event_id: eventId, from: part.hardware_id, to: id, reason: r });
 }
 
 export interface VisitPatch { visitedOn?: string; technician?: string | null; outcome?: Outcome; salesforceCase?: string | null; salesforceWorkOrder?: string | null; notes?: string | null; documentId?: string | null }
 
-/** Change the visit itself. A new date or outcome changes warranty coverage, so coverage is recalculated for its events, which is refused once any are invoiced. */
-export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, reason: string, userId: string | null): Promise<void> {
+/**
+ * Change the visit itself. A new date or outcome changes warranty coverage for this visit and for later visits at
+ * the same units, so coverage is recalculated; refused if this visit is invoiced, and later invoiced entries whose
+ * coverage would change are returned for review (never changed).
+ */
+export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, reason: string, userId: string | null): Promise<Recalc> {
+  return db.transaction((tx) => correctVisitIn(tx, visitId, patch, reason, userId));
+}
+async function correctVisitIn(db: Q, visitId: string, patch: VisitPatch, reason: string, userId: string | null): Promise<Recalc> {
   const r = need(reason);
   const v = await one<{ id: string; property_id: string; visited_on: string; outcome: Outcome; technician: string | null; salesforce_case: string | null; salesforce_work_order: string | null; notes: string | null; document_id: string | null }>(db,
     `SELECT id, property_id, visited_on::text, outcome, technician, salesforce_case, salesforce_work_order, notes, document_id FROM visit WHERE id=$1`, [visitId]);
@@ -98,31 +112,41 @@ export async function correctVisit(db: Db, visitId: string, patch: VisitPatch, r
     for (const e of events) if (await isInvoiced(db, e.id)) throw new ServiceError('Part of this visit has been invoiced, so its date and outcome can no longer change.');
     if (next.outcome !== 'completed' && events.some((e) => e.action === 'replace')) throw new ServiceError('A visit with replaced parts must stay "completed". Void the replacement first.');
   }
-  const { warranty } = await loadSettings(db);
-  await db.transaction(async (tx) => {
-    await tx.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7, document_id=$8, job_id=COALESCE((SELECT job_id FROM document WHERE id=$8), job_id) WHERE id=$1`,
-      [visitId, next.visitedOn, next.outcome, next.technician, next.salesforceCase, next.salesforceWorkOrder, next.notes, next.documentId]);
-    if (coverageChanges) {
-      const prop = (await tx.query<{ installed_by_us: boolean; install_completed_on: string | null }>(`SELECT installed_by_us, install_completed_on::text FROM property WHERE id=$1`, [v.property_id])).rows[0];
-      const touched = next.outcome === 'completed';
-      for (const e of events) {
-        const prior = await tx.query<{ visited_on: string; outcome: Outcome }>(
-          `SELECT DISTINCT v2.visited_on::text, v2.outcome FROM service_event se JOIN visit v2 ON v2.id=se.visit_id
-            WHERE se.endpoint_id=$1 AND se.visit_id<>$2 AND ${LIVE_EVENT}`, [e.endpoint_id, visitId]);
-        const old = await one<{ on: string | null }>(tx,
-          `SELECT max(i.installed_on)::text "on" FROM event_part ep JOIN installation i ON i.device_id=ep.old_device_id AND i.origin='service' WHERE ep.service_event_id=$1`, [e.id]);
-        const cov = coverage({ installedByUs: prop.installed_by_us, installCompletedOn: prop.install_completed_on,
-          endpointVisits: prior.rows.map((x) => ({ date: x.visited_on, outcome: x.outcome })), visitDate: next.visitedOn, devicePartInstalledOn: old?.on ?? null }, warranty);
-        await tx.query(`UPDATE service_event SET labor_covered=$2, part_covered=$3, coverage_basis=$4 WHERE id=$1`,
-          [e.id, touched && cov.laborCovered, touched && e.action === 'replace' && cov.partCovered, cov.basis]);
-        if (next.visitedOn !== v.visited_on) {
-          await tx.query(`UPDATE installation SET installed_on=$2 WHERE source_ref=$1`, [e.id, next.visitedOn]);
-          await tx.query(`UPDATE installation SET removed_on=$3 WHERE removed_on=$2 AND device_id IN (SELECT old_device_id FROM event_part WHERE service_event_id=$1 AND old_device_id IS NOT NULL)`, [e.id, v.visited_on, next.visitedOn]);
-        }
-      }
+  await db.query(`UPDATE visit SET visited_on=$2, outcome=$3, technician=$4, salesforce_case=$5, salesforce_work_order=$6, notes=$7, document_id=$8, job_id=COALESCE((SELECT job_id FROM document WHERE id=$8), job_id) WHERE id=$1`,
+    [visitId, next.visitedOn, next.outcome, next.technician, next.salesforceCase, next.salesforceWorkOrder, next.notes, next.documentId]);
+  let recalc: Recalc = { updated: [], review: [] };
+  if (coverageChanges) {
+    if (next.visitedOn !== v.visited_on) for (const e of events) {
+      await db.query(`UPDATE installation SET installed_on=$2 WHERE source_ref=$1`, [e.id, next.visitedOn]);
+      await db.query(`UPDATE installation SET removed_on=$3 WHERE removed_on=$2 AND device_id IN (SELECT old_device_id FROM event_part WHERE service_event_id=$1 AND old_device_id IS NOT NULL)`, [e.id, v.visited_on, next.visitedOn]);
     }
-    await reopenNotes(tx, visitId);
-    await log(tx, userId, 'visit_corrected', 'visit', visitId, { visit_id: visitId, reason: r, from: { visitedOn: v.visited_on, outcome: v.outcome, technician: v.technician, salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, notes: v.notes, documentId: v.document_id }, to: next });
+    // This visit's entries and every later one at the same units.
+    const from = next.visitedOn < v.visited_on ? next.visitedOn : v.visited_on;
+    recalc = await recalcCoverage(db, [...new Set(events.map((e) => e.endpoint_id))], from, (await loadSettings(db)).warranty, userId);
+  }
+  await reopenNotes(db, visitId);
+  await log(db, userId, 'visit_corrected', 'visit', visitId, { visit_id: visitId, reason: r, from: { visitedOn: v.visited_on, outcome: v.outcome, technician: v.technician, salesforceCase: v.salesforce_case, salesforceWorkOrder: v.salesforce_work_order, notes: v.notes, documentId: v.document_id }, to: next });
+  return recalc;
+}
+
+export type CorrectionOp =
+  | { kind: 'visit'; patch: VisitPatch }
+  | { kind: 'void'; eventId: string; label: string }
+  | { kind: 'partId'; eventId: string; newHardwareId: string; label: string }
+  | { kind: 'event'; eventId: string; patch: EventPatch; label: string };
+
+/** Apply every change from the correction screen in one transaction: all of them, or none. */
+export async function applyCorrections(db: Db, visitId: string, ops: CorrectionOp[], reason: string, userId: string | null): Promise<{ done: string[]; review: number }> {
+  need(reason);
+  return db.transaction(async (tx) => {
+    const done: string[] = []; let review = 0;
+    for (const op of ops) {
+      if (op.kind === 'visit') { review += (await correctVisitIn(tx, visitId, op.patch, reason, userId)).review.length; done.push('visit details'); }
+      if (op.kind === 'void') { review += (await voidEventIn(tx, op.eventId, reason, userId)).review.length; done.push(`${op.label} voided`); }
+      if (op.kind === 'partId') { await correctPartIdIn(tx, op.eventId, op.newHardwareId, reason, userId); done.push(`${op.label} new ID`); }
+      if (op.kind === 'event') { await correctEventWithReasonIn(tx, op.eventId, op.patch, reason, userId); done.push(op.label); }
+    }
+    return { done, review };
   });
 }
 

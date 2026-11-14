@@ -278,7 +278,8 @@ async function importCim(q: Q, propertyId: string, res: ImportResult, reg: Regis
 
 async function importPsr(q: Q, propertyId: string, res: ImportResult, reg: Registry, p: PsrParse, opts: ImportOptions) {
   // A PSR exists only for installs we performed: it anchors the install warranty on the latest install date.
-  await q.query(`UPDATE property SET installed_by_us=true, install_completed_on=COALESCE($2, install_completed_on) WHERE id=$1`, [propertyId, p.completedOn]);
+  // The install warranty runs from the LATEST completion: an older PSR imported later never moves it back.
+  await q.query(`UPDATE property SET installed_by_us=true, install_completed_on=GREATEST(install_completed_on, $2::date) WHERE id=$1`, [propertyId, p.completedOn]);
   for (const e of p.equipment) {
     // PSR serials appear to match CIM repeater IDs; the same key lets the two reports meet on one device.
     const d = e.serial ? await upsertDevice(q, propertyId, e.kind, e.serial, { serial: e.serial })
