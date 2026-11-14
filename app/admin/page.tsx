@@ -15,7 +15,7 @@ export default async function Admin({ searchParams }: { searchParams: SP }) {
   const roleName = (k: string) => roles.find((r) => r.key === k)?.name ?? k;
   const links = [
     can(me, 'roles.manage') && <a key="r" href="/admin/roles">Roles</a>, can(me, 'activity.view') && <a key="a" href="/admin/activity">Activity log</a>,
-    can(me, 'import.maps') && <a key="m" href="/admin/import-maps">Import maps</a>, can(me, 'lists.edit') && <a key="s" href="/admin/services">Service codes</a>, can(me, 'lists.edit') && <a key="l" href="/admin/lists">Lists</a>,
+    can(me, 'import.maps') && <a key="m" href="/admin/import-maps">Import maps</a>, can(me, 'lists.edit') && <a key="s" href="/admin/services">Service codes</a>, can(me, 'lists.edit') && <a key="l" href="/admin/lists">Lists</a>, can(me, 'rules.edit') && <a key="ru" href="/admin/rules">Audit rules</a>,
   ].filter(Boolean);
   return (
     <>

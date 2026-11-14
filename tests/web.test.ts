@@ -162,3 +162,21 @@ describe('lists', () => {
     expect(await redirectOf(saveListItemAction(f()))).toMatch(/already on the list/);
   });
 });
+
+describe('audit rules', () => {
+  it('only rule editors test and save rules, and saving needs a tested draft', async () => {
+    const { testRulesAction, saveRulesAction } = await import('../app/server-actions/rules');
+    for (const role of ['coordinator', 'scheduler', 'technician', 'billing'] as Role[]) {
+      await signInAs(role);
+      expect([role, await redirectOf(saveRulesAction())]).toEqual([role, expect.stringMatching(/role cannot do that/)]);
+    }
+    await signInAs('manager');
+    expect(await redirectOf(saveRulesAction())).toMatch(/Test the changes first/);
+    const f = new FormData(); f.set('code', 'NEG');
+    for (const [k, v] of Object.entries({ comp_NEG: 'none', method_NEG: 'standard', oa_NEG: 'Investigate', oo_NEG: 'property', or_NEG: 'Negative usage', va_NEG: 'Investigate', vo_NEG: 'property', vr_NEG: 'Negative usage' })) f.set(k, v);
+    expect(await redirectOf(testRulesAction(f))).toMatch(/tested=1/);
+    expect(await redirectOf(saveRulesAction())).toMatch(/Rules saved for NEG/);
+    const { loadRules } = await import('../src/rules/table');
+    expect((await loadRules(w.db)).NEG.occupied.owner).toBe('property');
+  }, 60000);
+});

@@ -28,52 +28,72 @@ export interface AuditSettings {
 
 export const DEFAULT_SETTINGS: AuditSettings = { intReadThreshold: 5, intStaleDays: 3 };
 
-/** NT/INT/IDMM -> transmitter; NI/HIGH/LOW -> meter; OTHER -> manual pick; combo -> both. */
-export function componentFor(code: string, isCombo = false): Component | undefined {
+// ---------- the rule table ----------
+// What each audit code means is a table people can edit (Admin > Rules, tested against past audits before saving).
+// The built-in table below reproduces the original rules exactly; the database holds only changed rows.
+
+export type RuleAction = Exclude<Recommendation['action'], 'Requested by property'>;
+export type RuleOwner = NonNullable<Recommendation['owner']>;
+export const RULE_ACTIONS: RuleAction[] = ['No action', 'Needs Service', 'Verify ID', 'Investigate', 'Unrecognized'];
+export const RULE_OWNERS: RuleOwner[] = ['property', 'service coordinator'];
+export const RULE_COMPONENTS = ['transmitter', 'meter', 'manual_pick', 'none'] as const;
+export type RuleComponent = (typeof RULE_COMPONENTS)[number];
+
+/** One side of a rule: what to recommend, for whom, and why (no full stop; it is added). */
+export interface RuleOutcome { action: RuleAction; owner: RuleOwner | null; reason: string }
+export interface Rule {
+  /** The part the work is on; a unit flagged as a combo device is always "both". */
+  component: RuleComponent;
+  /** 'standard' uses the occupied / vacant outcomes; 'intermittent' counts reads (the INT method, thresholds in settings). */
+  method: 'standard' | 'intermittent';
+  occupied: RuleOutcome;
+  /** Used when the unit is known to be vacant. Unknown occupancy is treated as occupied, so a unit is never silently skipped. */
+  vacant: RuleOutcome;
+}
+export type RuleTable = Record<string, Rule>;
+
+const same = (action: RuleAction, reason: string, owner: RuleOwner | null = null) => ({ occupied: { action, owner, reason }, vacant: { action, owner, reason } });
+export const DEFAULT_RULES: RuleTable = {
+  OK: { component: 'none', method: 'standard', ...same('No action', 'Reading OK') },
+  NI: { component: 'meter', method: 'standard', occupied: { action: 'Needs Service', owner: null, reason: 'No increment on an occupied unit' }, vacant: { action: 'No action', owner: null, reason: 'No increment on a vacant unit' } },
+  NT: { component: 'transmitter', method: 'standard', ...same('Needs Service', 'No transmission') },
+  IDMM: { component: 'transmitter', method: 'standard', ...same('Verify ID', 'ID mismatch') },
+  LOW: { component: 'meter', method: 'standard', occupied: { action: 'Investigate', owner: 'property', reason: 'Low usage on an occupied unit' }, vacant: { action: 'No action', owner: null, reason: 'Low usage on a vacant unit' } },
+  HIGH: { component: 'meter', method: 'standard', ...same('Investigate', 'High usage', 'property') },
+  NEG: { component: 'none', method: 'standard', ...same('Investigate', 'Negative usage', 'service coordinator') },
+  INT: { component: 'transmitter', method: 'intermittent', ...same('Needs Service', 'Intermittent') },
+};
+
+/** The part an audit code points at (built-in table unless one is given); manual pick for OTHER; combo -> both. */
+export function componentFor(code: string, isCombo = false, rules: RuleTable = DEFAULT_RULES): Component | undefined {
   if (isCombo) return 'both';
-  switch (code) {
-    case 'NT': case 'INT': case 'IDMM': return 'transmitter';
-    case 'NI': case 'HIGH': case 'LOW': return 'meter';
-    case 'OTHER': return 'manual_pick';
-    default: return undefined;
-  }
+  const c = rules[code]?.component;
+  if (c && c !== 'none') return c;
+  return code === 'OTHER' ? 'manual_pick' : undefined;
 }
 
 export function normalizeCode(raw: string | null | undefined): string {
   return (raw ?? '').trim().toUpperCase();
 }
 
-export function recommend(input: AuditInput, settings: AuditSettings = DEFAULT_SETTINGS): Recommendation {
+export function recommend(input: AuditInput, settings: AuditSettings = DEFAULT_SETTINGS, rules: RuleTable = DEFAULT_RULES): Recommendation {
   const code = normalizeCode(input.code);
-  const component = componentFor(code, input.isCombo);
-  // Unknown occupancy is treated as occupied so a unit is never silently skipped.
-  const occ = input.occupied !== false;
-  const occNote = input.occupied === null ? ' (occupancy unknown, treated as occupied)' : '';
-
-  switch (code) {
-    case 'OK':
-      return { action: 'No action', reason: 'Reading OK.' };
-    case 'NI':
-      return occ
-        ? { action: 'Needs Service', component, reason: 'No increment on an occupied unit' + occNote + '.' }
-        : { action: 'No action', reason: 'No increment on a vacant unit.' };
-    case 'NT':
-      return { action: 'Needs Service', component, reason: 'No transmission.' };
-    case 'IDMM':
-      return { action: 'Verify ID', component, reason: 'ID mismatch.' };
-    case 'LOW':
-      return occ
-        ? { action: 'Investigate', owner: 'property', component, reason: 'Low usage on an occupied unit' + occNote + '.' }
-        : { action: 'No action', reason: 'Low usage on a vacant unit.' };
-    case 'HIGH':
-      return { action: 'Investigate', owner: 'property', component, reason: 'High usage.' };
-    case 'NEG':
-      return { action: 'Investigate', owner: 'service coordinator', reason: 'Negative usage.' };
-    case 'INT':
-      return recommendInt(input, settings, component);
-    default:
-      return { action: 'Unrecognized', reason: `Unrecognized audit code "${code || '(blank)'}". Review manually.` };
-  }
+  const rule = rules[code];
+  if (!rule) return { action: 'Unrecognized', reason: `Unrecognized audit code "${code || '(blank)'}". Review manually.` };
+  // A rule with no part names none, even on a combo device.
+  const component = rule.component === 'none' ? undefined : componentFor(code, input.isCombo, rules);
+  if (rule.method === 'intermittent') return recommendInt(input, settings, component);
+  const vacant = input.occupied === false;
+  const o = vacant ? rule.vacant : rule.occupied;
+  // Say so when occupancy decided the outcome but was not known.
+  const differs = rule.occupied.action !== rule.vacant.action || rule.occupied.owner !== rule.vacant.owner;
+  const note = input.occupied === null && differs ? ' (occupancy unknown, treated as occupied)' : '';
+  return {
+    action: o.action,
+    ...(o.owner ? { owner: o.owner } : {}),
+    ...(component && o.action !== 'No action' ? { component } : {}),
+    reason: o.reason.replace(/[.\s]+$/, '') + note + '.',
+  };
 }
 
 function recommendInt(input: AuditInput, s: AuditSettings, component: Component | undefined): Recommendation {

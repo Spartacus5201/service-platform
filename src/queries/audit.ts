@@ -1,6 +1,6 @@
 import type { Db } from '../db';
 import { touchesFor, serviceInstalls, partDate } from '../service/coverage';
-import { recommend, normalizeCode, type Recommendation, type AuditSettings } from '../rules/audit';
+import { recommend, normalizeCode, type Recommendation, type AuditSettings, type RuleTable } from '../rules/audit';
 import { coverage, type Coverage, type WarrantySettings } from '../rules/warranty';
 import { readSettings } from '../settings';
 
@@ -42,8 +42,10 @@ export interface AuditLine {
 }
 
 /** Every reading in an import batch with its recommendation and warranty position, ready for the audit review screen. */
-export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: string): Promise<AuditLine[]> {
+export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: string, o: { rules?: RuleTable } = {}): Promise<AuditLine[]> {
   const { audit, warranty } = await loadSettings(db);
+  // The rules in force, or a draft being tested (Admin > Rules).
+  const ruleTable = o.rules ?? await (await import('../rules/table')).loadRules(db);
   const rows = await db.query<{
     id: string; endpoint_id: string; building: string; unit: string; service_code: string; audit_result: string;
     usage: string | null; read_count: number | null; last_real_on: string | null; read_date_2: string | null; move_in_on: string | null; occupancy_as_of: string | null; is_manual_read: boolean;
@@ -79,9 +81,13 @@ export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: s
     // Occupancy is unknown until an occupancy (or audit with ranges) import has run for the unit.
     const occupied = r.occupancy_as_of === null ? null : r.move_in_on !== null;
     const code = normalizeCode(r.audit_result);
-    // An added audit code (Admin > Lists) is judged as the built-in code it works like.
+    // An added audit code (Admin > Lists) has its own rule if one was saved, else the rule of the code it works like.
+    // A retired added code is not recognised. ruleCode (for wording) is always the built-in code.
+    const item = lists.get('audit_code', code);
+    const retired = !!item && !item.builtin && !item.active;
     const ruleCode = lists.worksLike('audit_code', code) ?? code;
-    const rules = recommend({ code: ruleCode, occupied, isManualRead: r.is_manual_read, readCount: r.read_count, lastRealOn: r.last_real_on, auditEndOn: r.read_date_2 }, audit);
+    const judgeAs = retired ? code : ruleTable[code] ? code : ruleCode;
+    const rules = recommend({ code: judgeAs, occupied, isManualRead: r.is_manual_read, readCount: r.read_count, lastRealOn: r.last_real_on, auditEndOn: r.read_date_2 }, audit, retired ? {} : ruleTable);
     const o = overrides.get(r.id);
     const rec: Recommendation = o
       ? { action: o.action, ...(o.owner ? { owner: o.owner } : {}), ...(o.component ? { component: o.component } : {}), reason: `Reviewer: ${o.reason}` }
