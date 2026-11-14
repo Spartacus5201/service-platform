@@ -36,13 +36,24 @@ Rules from the service team:
 3. Run both for one count cycle: counts done in the app, compared with the workbook.
 4. When they agree, the app is the master and the workbook is kept read-only.
 
+## Jobs, technicians and balances (decided)
+- **Reserved when the job is scheduled.** Scheduling a job reserves its parts (from the WA's bring list) at the assigned technician's location. Reserved stock is still on the shelf but no longer available to other jobs. Rescheduling or reassigning moves the reservation; closing a job releases what was not used.
+- **Consumed by the technician who uses it.** Recording the visit uses the parts from that technician's location against the job; anything reserved and not used goes back to available.
+- **Balances at three levels:** per location (on hand, reserved, available), per job (reserved, used), and the company total across all locations, with value at cost.
+- If a technician's location does not hold enough for a job, scheduling says so and offers a transfer from the office.
+
+## Prices
+The sell price is the same at every location, but can differ by client. Today a property can carry its own prices; client price lists (one set of prices for every property of a management company) come with the client record. Stock is always valued at cost.
+
+## Who can do what
+A new **Manager** role approves stock-count differences and other adjustments. Office staff and technicians count; only a Manager (or admin) approves the adjustment. The role is added when inventory is built, together with its other approvals.
+
 ## Connects to
 - Visits: parts used on a visit come out of the technician's location automatically.
-- Documents: the bring list can check stock at the technician's location before a visit.
+- Documents: the bring list checks stock at the technician's location before a visit.
 - Equipment registry: each item knows its model, so obsolete stock can be flagged.
 - Install projects: their stock is reserved, not counted as available for service.
 
 ## Open questions
-- Is the sell price per location ever different, or always the company price?
-- Who can approve a count difference, and is there a value above which a second person must approve?
-- Should a technician's storage unit hold reserved stock for specific jobs?
+- Is there a dollar amount above which an adjustment needs a second Manager?
+- Who is the "client" for client prices: the management company, the owner, or either?
