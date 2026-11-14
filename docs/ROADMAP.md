@@ -10,7 +10,7 @@ Facts that change over time are data people edit in the app; the workflow stays 
 
 ## Next, in order
 
-1. **Code review**: an independent review of the whole codebase before the deeper refactors below: correctness, data integrity (append-only history, money), security (sign-in, permissions, uploads), simplicity, and test gaps. Findings fixed or recorded here.
+1. **Review fixes** (review done: `REVIEW-2026-11.md`): A money, warranty and records; B imports and status; C hardening before the company server; D foundation for the refactors (one time zone, one settings reader, error handling, split actions, faster tests, web-layer tests).
 2. **Roles and permissions**: roles become data an Admin edits (a grid of roles by permissions), people can hold more than one role, and the defaults are Admin, Manager, Coordinator, Scheduler, Technician and Billing. Today's office users become Coordinator + Billing. Plan: `ROLES.md`.
 3. **Editable lists**: (service codes done) audit result codes and their meaning, invoicing codes, visit actions, device types, milestone types move from fixed code values to short lists in Admin. Retire, never delete, so old audits and documents still read correctly.
 4. **Rules as tables, tested before saving**: which component each audit code points to and whether it needs service become an editable table. Before a change is saved, the last real audits are re-run and the differences shown.
