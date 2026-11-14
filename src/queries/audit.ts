@@ -44,7 +44,7 @@ export interface AuditLine {
 }
 
 /** Every reading in an import batch with its recommendation and warranty position, ready for the audit review screen. */
-export async function auditLines(db: Db, batchId: string, asOf: string): Promise<AuditLine[]> {
+export async function auditLines(db: Pick<Db, 'query'>, batchId: string, asOf: string): Promise<AuditLine[]> {
   const { audit, warranty } = await loadSettings(db);
   const rows = await db.query<{
     id: string; endpoint_id: string; building: string; unit: string; service_code: string; audit_result: string;

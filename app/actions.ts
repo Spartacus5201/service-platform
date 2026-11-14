@@ -27,6 +27,7 @@ import { salesforce, SalesforceError } from '@/src/salesforce/client';
 import type { CatalogImportUi, FormState, ImportUi, SecretState } from './types';
 import { withError, withMsg } from './ui';
 import { WizardError } from '@/src/importer/wizard';
+import { listServices } from '@/src/lists/services';
 import { createUser } from '@/src/auth/auth';
 
 const s = (fd: FormData, k: string) => { const v = fd.get(k); return typeof v === 'string' && v.trim() !== '' ? v.trim() : null; };
@@ -124,8 +125,8 @@ export async function importReport(_: ImportUi, fd: FormData): Promise<ImportUi>
     };
     if (fd.get('wizard') === 'on') return await toWizard();
     let parsed;
-    try { parsed = await parseFile(bytes); }
-    catch (e) { if (e instanceof ParseError && /not recognised/.test(e.message)) return await toWizard(); throw e; }
+    try { parsed = await parseFile(bytes, { services: await listServices(await getDb(), { includeRetired: true }) }); }
+    catch (e) { if (e instanceof ParseError && (e.code === 'not_recognised' || e.code === 'needs_wizard')) return await toWizard(); throw e; }
     const asOccupancy = fd.get('purpose') === 'occupancy';
     await purgeExpiredImports(await getDb());     // retention is enforced whenever someone imports
     const r = await importParsed(await getDb(), propertyId, parsed, {
@@ -136,7 +137,7 @@ export async function importReport(_: ImportUi, fd: FormData): Promise<ImportUi>
     return {
       kind: r.kind, duplicate: r.duplicate, rows: 'rows' in parsed ? parsed.rows.length : 'devices' in parsed ? parsed.devices.length : undefined,
       readings: r.readings, devices: r.devices, checkins: r.checkins, unitsCreated: r.unitsCreated, occupancyUpdated: r.occupancyUpdated,
-      unmatched: r.unmatched, idChanges: r.idChanges, warnings: r.warnings.slice(0, 20),
+      unmatched: r.unmatched, idChanges: r.idChanges, idElsewhere: r.idElsewhere, warnings: r.warnings.slice(0, 20),
       auditUrl: isAudit && r.batchId && !r.duplicate ? `/properties/${propertyId}/audits/${r.batchId}` : undefined,
     };
   } catch (e) {

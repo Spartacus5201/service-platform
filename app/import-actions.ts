@@ -83,6 +83,7 @@ export async function wizImportAction(fd: FormData) {
     const parts = [res.duplicate ? 'This exact file was already imported; nothing changed.' : `Imported with “${r.layout.name}” (version ${r.layout.version}): ${res.checkins} transmitter(s)${res.occupancyUpdated ? `, ${res.occupancyUpdated} occupancy update(s)` : ''}${res.unitsCreated ? `, ${res.unitsCreated} unit(s) added` : ''}.`];
     if (res.unmatched.length) parts.push(`${res.unmatched.length} unit(s) not on file were skipped (see Import problems).`);
     if (res.idChanges.length) parts.push(`${res.idChanges.length} transmitter ID(s) differ from the record (see Import problems).`);
+    if (res.idElsewhere.length) parts.push(`${res.idElsewhere.length} transmitter ID(s) are on record at a different unit and were not moved (see Import problems).`);
     redirect(withMsg(`/properties/${pid}`, parts.join(' ')));
   } catch (e) {
     if (isRedirect(e)) throw e;

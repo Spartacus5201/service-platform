@@ -9,10 +9,10 @@ export interface ServiceType { code: string; name: string; words: string[]; acti
 
 /** Same as the rows migration 022 creates; used where there is no database (the built-in parsers, tests). */
 export const DEFAULT_SERVICES: ServiceType[] = [
-  { code: 'WS', name: 'Water', words: ['water', 'all water', 'cold water', 'domestic water', 'potable water'], active: true, sort: 1 },
+  { code: 'WS', name: 'Water', words: ['water', 'all water', 'water-all', 'cold water', 'water-cold', 'domestic water', 'potable water'], active: true, sort: 1 },
   { code: 'GS', name: 'Gas', words: ['gas', 'natural gas'], active: true, sort: 2 },
   { code: 'EL', name: 'Electric', words: ['electric', 'electricity', 'elec'], active: true, sort: 3 },
-  { code: 'HW', name: 'Hot Water', words: ['hot water', 'domestic hot water'], active: true, sort: 4 },
+  { code: 'HW', name: 'Hot Water', words: ['hot water', 'water-hot', 'domestic hot water'], active: true, sort: 4 },
   { code: 'CW', name: 'Chilled Water', words: ['chilled water'], active: true, sort: 5 },
   { code: 'HV', name: 'HVAC', words: ['hvac', 'heating', 'cooling', 'heating and cooling', 'btu'], active: true, sort: 6 },
   { code: 'WA', name: 'Water (alternate code)', words: [], active: true, sort: 7 },

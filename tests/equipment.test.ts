@@ -24,7 +24,8 @@ describe('service codes', () => {
     expect(['All Water', 'hot water', 'Chilled Water', 'HVAC', 'WA', 'Natural Gas'].map((x) => matchService(x))).toEqual(['WS', 'HW', 'CW', 'HV', 'WA', 'GS']);
     expect(matchService('Irrigation')).toBeNull();
     expect(utilityToServiceCode('Hot Water')).toBe('HW');
-    expect(utilityToServiceCode('Irrigation water')).toBe('WS');    // built-in readers keep their old fallback
+    expect(utilityToServiceCode('Irrigation water')).toBeNull();      // never guessed: the row is reported
+    expect(utilityToServiceCode(null)).toBe('WS');                     // a blank utility is water
     const { db } = await world();
     expect((await listServices(db)).map((s) => s.code)).toEqual(['WS', 'GS', 'EL', 'HW', 'CW', 'HV', 'WA']);
   }, 60000);

@@ -9,10 +9,15 @@ export type Converted = { ok: true; value: string | number | boolean | null } | 
 const fail = (error: string): Converted => ({ ok: false, error });
 const ok = (value: string | number | boolean | null): Converted => ({ ok: true, value });
 
-/** Excel day serial (1900 system) to ISO date. Only the plausible range is accepted. */
+/** Excel day serial (1900 system) to ISO date: the whole days (the fraction is the time of day). Plausible range only. */
 function serialDate(n: number): string | null {
   if (!Number.isFinite(n) || n < 20000 || n > 80000) return null;
-  return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10);
+  return new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000).toISOString().slice(0, 10);
+}
+/** Excel serial with time of day to an ISO timestamp (read as UTC, like a report time with no zone). */
+function serialTimestamp(n: number): string | null {
+  if (!Number.isFinite(n) || n < 20000 || n > 80000) return null;
+  return new Date(Date.UTC(1899, 11, 30) + Math.round(n * 86400) * 1000).toISOString();
 }
 
 /** Service wording to the audit report's ServiceID, from the service list. Unknown wording is an error, never a guess. */
@@ -41,8 +46,8 @@ export function convert(type: FieldType, raw: Cell | undefined, ctx?: ConvertCon
       return d ? ok(d) : fail(`"${s}" is not a date this importer reads (MM/DD/YY, MM/DD/YYYY or YYYY-MM-DD)`);
     }
     case 'timestamp': {
-      if (typeof raw === 'number') { const d = serialDate(raw); return d ? ok(d + 'T00:00:00.000Z') : fail(`"${s}" is not a date and time`); }
-      const t = parseTimestamp(raw); return t ? ok(t) : fail(`"${s}" is not a date and time`);
+      if (typeof raw === 'number') { const t = serialTimestamp(raw); return t ? ok(t) : fail(`"${s}" is not a date and time`); }
+      const t = parseTimestamp(raw); return t ? ok(t) : fail(`"${s}" is not a date and time this importer reads for certain (e.g. an unknown time zone)`);
     }
     case 'boolean': { const b = bool(raw); return b !== null ? ok(b) : fail(`"${s}" is not yes or no`); }
     case 'service': {

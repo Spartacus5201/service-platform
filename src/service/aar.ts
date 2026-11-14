@@ -12,7 +12,6 @@ export type AarOutcome = 'fixed' | 'still_failing' | 'new_problem' | 'revisit' |
 export const AAR_LABEL: Record<AarOutcome, string> = {
   fixed: 'Fixed', still_failing: 'Still failing', new_problem: 'New problem', revisit: 'Revisit needed', awaiting_audit: 'Awaiting audit',
 };
-const FAILING = ['NT', 'NI', 'INT', 'IDMM'];
 
 export interface AarRow {
   visitId: string; visitedOn: string; eventId: string; endpointId: string; building: string; unit: string; service: string;
@@ -59,7 +58,8 @@ async function visitRows(db: Db, visitId: string): Promise<{ c: Closeout; rows: 
     let outcome: AarOutcome;
     if (u.result === 'unable_to_access' || u.result === 'unable_to_complete') outcome = 'revisit';
     else if (v?.status === 'verified') outcome = 'fixed';
-    else if (v?.status === 'failed') outcome = a && beforeCode && a !== beforeCode && FAILING.includes(a) ? 'new_problem' : 'still_failing';
+    else if (v?.status === 'failed') outcome = a && beforeCode && a !== beforeCode ? 'new_problem' : 'still_failing';
+    else if (v?.on) outcome = 'new_problem';            // a later audit flags something other than a failed repair (verdict "flagged")
     else outcome = 'awaiting_audit';
     rows.push({
       visitId, visitedOn: c.visit.visitedOn, eventId: u.eventId, endpointId: u.endpointId, building: u.building, unit: u.unit, service: u.service,

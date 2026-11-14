@@ -3,6 +3,7 @@ import { parseAutoAudit, parseManualAudit, AuditParse } from './audit';
 import { parseCimNextCentury, parseCimInovonics, parseAmrStatus, isAmrStatusHeader, CimParse } from './cim';
 import { parsePsr, PsrParse } from './psr';
 import { isUnitDirectory, parseUnitDirectory, type UnitDirectoryParse } from './unitdirectory';
+import { DEFAULT_SERVICES, type ServiceType } from '../lists/services';
 
 export type ReportKind = 'auto_audit' | 'manual_audit' | 'cim_nextcentury' | 'cim_inovonics' | 'psr';
 export type Parsed = AuditParse | CimParse | PsrParse | UnitDirectoryParse;
@@ -33,30 +34,32 @@ export function detectFormat(sheets: Sheet[]): Detected | null {
   return null;
 }
 
-export function parseSheets(sheets: Sheet[]): Parsed {
+export function parseSheets(sheets: Sheet[], services: ServiceType[] = DEFAULT_SERVICES): Parsed {
   const d = detectFormat(sheets);
-  if (!d) throw new ParseError('Report format not recognised.');
+  if (!d) throw new ParseError('Report format not recognised.', 'not_recognised');
   switch (d.kind) {
     case 'auto_audit': return parseAutoAudit(d.sheet.rows);
     case 'manual_audit': return parseManualAudit(d.sheet.rows);
-    case 'cim_nextcentury': return parseCimNextCentury(d.sheet.rows);
-    case 'cim_inovonics': return parseCimInovonics(d.sheet.rows);
-    case 'amr_status': return parseAmrStatus(d.sheet.rows);
+    case 'cim_nextcentury': return parseCimNextCentury(d.sheet.rows, services);
+    case 'cim_inovonics': return parseCimInovonics(d.sheet.rows, services);
+    case 'amr_status': return parseAmrStatus(d.sheet.rows, services);
     case 'psr': return parsePsr(sheets);
   }
 }
 
-export async function parseFile(buf: ArrayBuffer | Uint8Array | Buffer): Promise<Parsed> {
+/** Read an uploaded report. `services` is the service list (from the database in the app). */
+export async function parseFile(buf: ArrayBuffer | Uint8Array | Buffer, o: { services?: ServiceType[] } = {}): Promise<Parsed> {
+  const services = o.services ?? DEFAULT_SERVICES;
   const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
   const isXlsx = bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4b;     // "PK": a zip container
   if (!isXlsx) {
     const text = new TextDecoder('utf-8').decode(bytes);
     if (isUnitDirectory(text)) return parseUnitDirectory(text);
     const grid = parseCsv(text.replace(/^\uFEFF/, ''));
-    if (isAmrStatusHeader(grid[0])) return parseAmrStatus(grid);
-    throw new ParseError('Report format not recognised. Use the .xlsx report, the Unit Directory .csv, or the AMR Status Report .csv.');
+    if (isAmrStatusHeader(grid[0])) return parseAmrStatus(grid, services);
+    throw new ParseError('Report format not recognised. Use the .xlsx report, the Unit Directory .csv, or the AMR Status Report .csv.', 'not_recognised');
   }
-  return parseSheets(await readWorkbook(buf));
+  return parseSheets(await readWorkbook(buf), services);
 }
 
 

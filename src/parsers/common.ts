@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { matchService } from '../lists/services';
+import { matchService, DEFAULT_SERVICES, type ServiceType } from '../lists/services';
 
 export type Cell = string | number | boolean | Date | null;
 export type Grid = Cell[][];
@@ -155,27 +155,41 @@ export function parseDate(v: Cell | undefined): string | null {
 const TZ_OFFSETS: Record<string, number> = {
   'eastern daylight': -4, 'eastern standard': -5, 'central daylight': -5, 'central standard': -6,
   'mountain daylight': -6, 'mountain standard': -7, 'pacific daylight': -7, 'pacific standard': -8,
+  'alaska daylight': -8, 'alaska standard': -9, 'hawaii standard': -10, 'hawaii-aleutian standard': -10,
+  edt: -4, est: -5, cdt: -5, cst: -6, mdt: -6, mst: -7, pdt: -7, pst: -8, akdt: -8, akst: -9, hst: -10,
+  utc: 0, gmt: 0, z: 0, '': 0,
 };
 
-/** Parse a check-in timestamp to an ISO UTC string. Handles Date, ISO with/without offset, and "MM/DD/YY HH:MM:SS Central Daylight Time". */
+/**
+ * Parse a check-in timestamp to an ISO UTC string. Handles Date, ISO with or without offset and fractional seconds,
+ * and "MM/DD/YY[YY] H:MM[:SS] [AM|PM] [zone]" where zone is a US zone name ("Central Daylight Time"), its
+ * abbreviation (CDT) or UTC/GMT. No zone is read as UTC (how the reports have always been read). Anything it
+ * cannot read for certain (an unknown zone, hour 13 with PM) returns null, never a guess.
+ */
 export function parseTimestamp(v: Cell | undefined): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
   const s = String(v).trim();
   if (!s) return null;
-  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(.*)$/.exec(s);
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\s*(.*)$/i.exec(s);
   if (m) {
     const y = m[3].length === 2 ? fullYear(+m[3]) : +m[3];
-    const tz = m[7].toLowerCase().replace(/\s*time$/, '').trim();
-    const off = TZ_OFFSETS[tz] ?? 0;
-    const ms = Date.UTC(y, +m[1] - 1, +m[2], +m[4], +m[5], +m[6]) - off * 3_600_000;
+    let h = +m[4]; const ampm = m[7]?.toLowerCase().replace(/\./g, '');
+    if (ampm) { if (h < 1 || h > 12) return null; if (ampm === 'pm' && h < 12) h += 12; if (ampm === 'am' && h === 12) h = 0; }
+    if (h > 23 || +m[5] > 59 || +(m[6] ?? 0) > 59) return null;
+    const tz = m[8].toLowerCase().replace(/\s*time$/, '').trim();
+    const off = TZ_OFFSETS[tz];
+    if (off === undefined) return null;
+    const ms = Date.UTC(y, +m[1] - 1, +m[2], h, +m[5], +(m[6] ?? 0)) - off * 3_600_000;
     return new Date(ms).toISOString();
   }
-  m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(Z|[+-]\d{2}:?\d{2})?$/.exec(s);
+  m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/.exec(s);
   if (m) {
-    const d = new Date(m[1] + 'T' + m[2] + (m[3] ?? 'Z'));
+    const off = m[3] ? (m[3] === 'Z' ? 'Z' : m[3].replace(/^([+-]\d{2})(\d{2})$/, '$1:$2')) : 'Z';
+    const d = new Date(m[1] + 'T' + m[2] + off);
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
+  if (/\d{1,2}:\d{2}/.test(s)) return null;          // has a time we could not read: do not drop it to midnight
   const d = parseDate(s);
   return d ? d + 'T00:00:00.000Z' : null;
 }
@@ -188,17 +202,12 @@ export function normLabel(v: Cell | undefined): string {
 }
 
 /**
- * Map a report's utility wording to the ServiceID code used by the audit reports. Exact words from the built-in
- * service list first (so "Hot Water" is HW); otherwise the long-standing rule: gas, electric, else water.
- * Services added in Admin are read by the import wizard; these built-in readers use the built-in list.
+ * A report's utility wording to the ServiceID, from the service list (Admin > Service codes). A blank utility is
+ * water. Wording not on the list returns null: the caller reports the row instead of guessing.
  */
-export function utilityToServiceCode(utility: string | null): string {
-  const exact = utility ? matchService(utility) : null;
-  if (exact) return exact;
-  const u = (utility ?? '').toLowerCase();
-  if (u.includes('gas')) return 'GS';
-  if (u.includes('elec')) return 'EL';
-  return 'WS';
+export function utilityToServiceCode(utility: string | null, services: ServiceType[] = DEFAULT_SERVICES): string | null {
+  if (!utility || !utility.trim()) return 'WS';
+  return matchService(utility, services);
 }
 
 /** Find the first row (within the first `limit` rows) satisfying `test`. */
@@ -217,7 +226,10 @@ export function headerMap(row: Cell[]): Map<string, number> {
   return m;
 }
 
-export class ParseError extends Error {}
+/** A file that could not be read. `code` tells callers what to do without matching the message text. */
+export class ParseError extends Error {
+  constructor(message: string, readonly code: 'unreadable' | 'not_recognised' | 'needs_wizard' = 'unreadable') { super(message); }
+}
 
 /** Minimal CSV reader: quoted fields, doubled quotes, CRLF. Blank lines are skipped. */
 export function parseCsv(text: string): string[][] {

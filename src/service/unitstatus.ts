@@ -7,6 +7,7 @@
 import type { Db } from '../db';
 import { auditLines, needsAction, type AuditLine } from '../queries/audit';
 import { LIVE_EVENT } from './record';
+import { afterService, type AfterVerdict } from './verdict';
 
 export type UnitStage = 'needs_document' | 'on_document' | 'visited' | 'revisit' | 'not_fixed';
 export const STAGE_LABEL: Record<UnitStage, string> = {
@@ -21,10 +22,14 @@ export interface StagedLine extends AuditLine {
 
 const UNABLE = ['unable_to_access', 'unable_to_complete'];
 
-export function stageOf(windowStart: string | null, doc: { createdOn: string } | null, ev: { visitedOn: string; result: string | null; outcome: string } | null): UnitStage {
+/**
+ * `verdict` is what this (flagged) audit line means for a unit serviced before the audit window (afterService):
+ * a failed repair is not_fixed; anything else flagged after the visit is a new item, handled like any other line.
+ */
+export function stageOf(windowStart: string | null, doc: { createdOn: string } | null, ev: { visitedOn: string; result: string | null; outcome: string } | null, verdict: AfterVerdict = 'failing'): UnitStage {
   if (ev && doc && doc.createdOn > ev.visitedOn) return 'on_document';           // re-quoted after the visit
   if (ev && (UNABLE.includes(ev.result ?? '') || UNABLE.includes(ev.outcome))) return 'revisit';
-  if (ev && windowStart && windowStart >= ev.visitedOn) return 'not_fixed';
+  if (ev && windowStart && windowStart >= ev.visitedOn) return verdict === 'failing' ? 'not_fixed' : 'needs_document';
   if (ev) return 'visited';
   if (doc) return 'on_document';
   return 'needs_document';
@@ -53,7 +58,7 @@ export async function stagedLines(db: Db, batchId: string, asOf: string): Promis
     const windowStart = [l.readDate1, l.readDate2].filter((x): x is string => !!x).sort()[0] ?? null;
     const doc = d ? { id: d.id, number: d.number, type: d.type, createdOn: d.created_on, issued: d.issued } : null;
     const lastVisit = e ? { visitId: e.visit_id, visitedOn: e.visited_on, result: e.result } : null;
-    return { ...l, stage: stageOf(windowStart, doc, e ? { visitedOn: e.visited_on, result: e.result, outcome: e.outcome } : null), doc, lastVisit };
+    return { ...l, stage: stageOf(windowStart, doc, e ? { visitedOn: e.visited_on, result: e.result, outcome: e.outcome } : null, afterService(l.recommendation)), doc, lastVisit };
   });
 }
 

@@ -1,4 +1,28 @@
 import { Grid, Cell, str, num, bool, parseDate, parseTimestamp, findRow, headerMap, utilityToServiceCode, ParseError } from './common';
+import { DEFAULT_SERVICES, type ServiceType } from '../lists/services';
+import { preview } from '../importer/index';
+import { AMR_STATUS } from '../importer/builtin';
+import type { Layout } from '../importer/layout';
+
+/** A row whose utility is not on the service list is reported and left out, never filed as water. */
+function serviceOrWarn(utility: string | null, services: ServiceType[], unit: string, warnings: string[]): string | null {
+  const code = utilityToServiceCode(utility, services);
+  if (!code) warnings.push(`Unit ${unit}: utility "${utility}" is not on the service list (Admin > Service codes), so this row was not imported.`);
+  return code;
+}
+
+/**
+ * Read a flat report with a built-in import map. Rows it cannot read stop the import (code needs_wizard) so the
+ * file opens in the import wizard, where each problem row is shown; nothing is filed by guesswork.
+ */
+export function readWithMap(rows: Grid, layout: Layout, services: ServiceType[]) {
+  const p = preview([{ name: layout.name, rows }], layout, {}, { services });
+  if (!p.importable || !p.parsed) {
+    const why = p.blocking[0] ?? (p.rejected.length ? `${p.rejected.length} row(s) cannot be read (first: row ${p.rejected[0].row}, ${p.rejected[0].reasons[0]})` : 'nothing to import');
+    throw new ParseError(`${layout.name}: ${why}.`, 'needs_wizard');
+  }
+  return p.parsed;
+}
 
 export interface CimRepeater { hardwareId: string; location: string | null; lastCheckIn: string | null }
 
@@ -37,7 +61,7 @@ export interface CimParse {
 const at = (r: Cell[], i: number | undefined): Cell => (i === undefined ? null : (r[i] ?? null));
 
 /** CIM from NextCentury or Zenner Flite: stacked sections (summary, repeaters, per-unit table). */
-export function parseCimNextCentury(rows: Grid): CimParse {
+export function parseCimNextCentury(rows: Grid, services: ServiceType[] = DEFAULT_SERVICES): CimParse {
   const warnings: string[] = [];
   // Summary block: label/value pairs in columns A:B, F:G, I:J of the first rows.
   const kv = new Map<string, Cell>();
@@ -69,9 +93,11 @@ export function parseCimNextCentury(rows: Grid): CimParse {
     const building = str(at(r, h.get('building')));
     const unit = str(at(r, h.get('unit')));
     if (!building && !unit) continue;
+    const serviceCode = serviceOrWarn(str(at(r, h.get('utility_type'))), services, `${building ?? ''}-${unit ?? ''}`, warnings);
+    if (!serviceCode) continue;
     devices.push({
       building: building ?? '', unit: unit ?? '',
-      serviceCode: utilityToServiceCode(str(at(r, h.get('utility_type')))),
+      serviceCode,
       meterLabel: str(at(r, h.get('meter_id'))) ?? str(at(r, h.get('meterid'))),
       hardwareId: str(at(r, h.get('serial_number'))),
       meterModel: str(at(r, h.get('meter_type'))),
@@ -105,7 +131,7 @@ export function batteryLow(v: Parameters<typeof bool>[0]): boolean | null {
 }
 
 /** CIM from Inovonics: a flat Device Status table. No ClassID: the selected property supplies it. */
-export function parseCimInovonics(rows: Grid): CimParse {
+export function parseCimInovonics(rows: Grid, services: ServiceType[] = DEFAULT_SERVICES): CimParse {
   const hi = findRow(rows, (r) => str(r[0])?.toLowerCase() === 'type' && r.some((c) => str(c)?.toLowerCase() === 'txid'), 0, 20);
   if (hi < 0) throw new ParseError('Inovonics Device Status header not found (expected Type ... TXID).');
   const h = headerMap(rows[hi]);
@@ -126,10 +152,12 @@ export function parseCimInovonics(rows: Grid): CimParse {
       continue;
     }
     if (type !== 'transmitter') { warnings.push(`Row ${i + 1}: unknown Type "${type}" skipped.`); continue; }
+    const serviceCode = serviceOrWarn(str(at(r, h.get('utility type'))), services, `${str(at(r, h.get('building name'))) ?? ''}-${str(at(r, h.get('unit name'))) ?? ''}`, warnings);
+    if (!serviceCode) continue;
     devices.push({
       building: str(at(r, h.get('building name'))) ?? '',
       unit: str(at(r, h.get('unit name'))) ?? '',
-      serviceCode: utilityToServiceCode(str(at(r, h.get('utility type')))),
+      serviceCode,
       meterLabel: null,
       hardwareId: tx,
       meterModel: null,
@@ -155,29 +183,7 @@ export function isAmrStatusHeader(r: Cell[] | undefined): boolean {
   const h = headerMap(r ?? []);
   return h.has('serial number') && h.has('last check in') && h.has('building') && h.has('unit');
 }
-export function parseAmrStatus(rows: Grid): CimParse {
-  const hi = findRow(rows, (r) => isAmrStatusHeader(r), 0, 10);
-  if (hi < 0) throw new ParseError('AMR Status Report header not found (expected Building, Unit, Serial Number, Last Check In).');
-  const h = headerMap(rows[hi]);
-  const devices: CimUnitDevice[] = []; const warnings: string[] = [];
-  for (let i = hi + 1; i < rows.length; i++) {
-    const r = rows[i] ?? [];
-    const building = str(at(r, h.get('building'))); const unit = str(at(r, h.get('unit')));
-    if (!building && !unit) continue;
-    const pct = str(at(r, h.get('battery level')));
-    const level = pct ? num(pct.replace('%', '')) : null;
-    devices.push({
-      building: building ?? '', unit: unit ?? '',
-      serviceCode: utilityToServiceCode(str(at(r, h.get('utility type')))),
-      meterLabel: str(at(r, h.get('meter id'))), hardwareId: str(at(r, h.get('serial number'))),
-      meterModel: str(at(r, h.get('meter type'))), transmitterModel: str(at(r, h.get('model'))),
-      batteryLevel: level,
-      lastCheckIn: parseTimestamp(at(r, h.get('last check in'))),
-      imr: num(at(r, h.get('meter read'))), pulseCount: null, meterUsage: num(at(r, h.get('meter usage'))),
-      lowBattery: null, tamper: null, jammed: null, powerLoss: null, reset: null, signalLevel: null, signalMargin: null,
-    });
-  }
-  if (!devices.length) warnings.push('No transmitter rows found.');
-  return { kind: 'cim_nextcentury', property: null, projectId: null, reportDate: null, totalEndpoints: devices.length,
-    reportingIn: null, nonAdvancing: null, repeaters: [], devices, warnings };
+/** Next Century AMR Status Report, read with its built-in import map (the same reading the import wizard shows). */
+export function parseAmrStatus(rows: Grid, services: ServiceType[] = DEFAULT_SERVICES): CimParse {
+  return readWithMap(rows, AMR_STATUS, services) as CimParse;
 }

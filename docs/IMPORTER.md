@@ -28,9 +28,9 @@ Goal: any report a person drops in is either imported exactly right, or stopped 
 
 ## Build order
 1. ~~Layout and map data model + converters + the apply step, with tests.~~ Done: `src/importer/` (convert, layout, apply, targets, builtin, index).
-2. ~~Reproduce the AMR Status Report and Unit Directory with maps and prove identical output to the current parsers on the corpus.~~ Done: identical on 3 real AMR Status Reports (645 rows) and 4 real Unit Directories (968 rows), no problems raised. One deliberate difference: an AMR utility the app does not recognise (e.g. "Irrigation") now stops the row for a person to map; the old parser silently made it water.
+2. ~~Reproduce the AMR Status Report and Unit Directory with maps and prove identical output to the current parsers on the corpus.~~ Done: identical on 3 real AMR Status Reports (645 rows) and 4 real Unit Directories (968 rows), no problems raised. One deliberate difference: an AMR utility the app does not recognise (e.g. "Irrigation") stops the row; on a normal upload the file then opens in the wizard. CIM files report and leave out such rows. Words added under Admin > Service codes are read on normal uploads too.
 3. ~~Wizard screens: choose table, map columns, preview, save.~~ Done: `/properties/<id>/import/<upload>`; unknown files open it automatically, any file can be opened in it by ticking "Open in the import wizard". Saved maps are listed under Admin → Import maps.
-4. Reproduce the audit reports and CIM, then retire the hand-written parsers.
+4. Reproduce the audit reports and CIM, then retire the hand-written parsers. (AMR Status Report and Unit Directory: done, normal uploads now read them with their built-in maps.)
 5. New data sets as they arrive: each gets a map, a sample file in the corpus, and a test.
 
 ## What is needed from the data sets

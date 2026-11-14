@@ -44,7 +44,9 @@ describe('importer: converters', () => {
   });
 });
 
-describe('importer: built-in layouts match the hand-written parsers', () => {
+// The hand-written AMR Status and Unit Directory parsers were proven identical to these maps on the real files and
+// then replaced by them (review B1); these tests now pin the reading itself.
+describe('importer: built-in maps', () => {
   it('AMR Status Report (synthetic)', () => {
     const text = synthAmrStatus(synthUnits(2, 6), { '101': 20 }, undefined, ['102']);
     const p = preview(csv(text), AMR_STATUS);
@@ -55,6 +57,8 @@ describe('importer: built-in layouts match the hand-written parsers', () => {
     const p = preview(csv(UD), UNIT_DIRECTORY);
     expect(p.importable).toBe(true);
     expect(noWarnings(p.parsed!)).toEqual(noWarnings(parseUnitDirectory(UD)));
+    expect((p.parsed as ReturnType<typeof parseUnitDirectory>).rows.map((r) => [r.unit, r.moveInOn, r.vacant])).toEqual([
+      ['000101', '2026-08-11', false], ['000102', null, true], ['000103', null, true], ['000104', null, true]]);
     expect(p.problems).toEqual([expect.objectContaining({ row: 5, field: 'move_in', severity: 'warning' })]);
     expect(p.unused).toEqual(expect.arrayContaining(['Name', 'Acct #', 'Balance']));
     expect(JSON.stringify(p.rows)).not.toContain('EXAMPLE');

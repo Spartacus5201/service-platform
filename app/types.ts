@@ -11,6 +11,7 @@ export interface ImportUi {
   occupancyUpdated?: number;
   unmatched?: { building: string; unit: string; service: string }[];
   idChanges?: { building: string; unit: string; was: string; now: string }[];
+  idElsewhere?: { building: string; unit: string; hardwareId: string; at: string }[];
   warnings?: string[];
   auditUrl?: string;
   wizardUrl?: string;

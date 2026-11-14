@@ -14,7 +14,7 @@ export function ImportIssues({ issues, propertyId, back }: { issues: ImportIssue
         <tbody>{issues.map((i) => (
           <tr key={i.id}>
             <td className="nowrap">{i.building}-{i.unit} {i.service}</td>
-            <td>{i.kind === 'unmatched_unit' ? 'Not in the registry; its readings were skipped.' : <>Transmitter ID in the file is <b>{i.now}</b>, record has <b>{i.was}</b>. Record the swap as a service visit, or correct the record.</>}</td>
+            <td>{i.kind === 'unmatched_unit' ? 'Not in the registry; its readings were skipped.' : i.kind === 'id_elsewhere' ? <>The file gives this unit transmitter <b>{i.now}</b>, which is on record at <b>{i.was}</b>. It was not moved. Check which unit it is really on, then record the swap or correct the record.</> : <>Transmitter ID in the file is <b>{i.now}</b>, record has <b>{i.was}</b>. Record the swap as a service visit, or correct the record.</>}</td>
             <td className="small nowrap">{us(i.createdOn)}{i.filename ? <><br />{i.filename}</> : null}</td>
             <td>
               <form action={resolveIssueAction} className="row" style={{ gap: '.4rem', alignItems: 'end' }}>

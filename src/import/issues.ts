@@ -1,6 +1,7 @@
 // Import problems that need a person, kept until they are dealt with:
 //   unmatched_unit  a unit in the file is not in the registry (it was skipped)
 //   id_mismatch     the file's transmitter ID differs from the one on record (the record was not changed)
+//   id_elsewhere    the file gives this unit a transmitter that is on record at another unit (it was not moved)
 // Re-checked after every import: an issue resolves itself once the records catch up.
 import type { Db } from '../db';
 import { normLabel } from '../parsers/common';
@@ -10,12 +11,13 @@ type Q = Pick<Db, 'query'>;
 export class IssueError extends Error {}
 
 export interface ImportIssue {
-  id: string; propertyId: string; batchId: string | null; kind: 'unmatched_unit' | 'id_mismatch';
+  id: string; propertyId: string; batchId: string | null; kind: 'unmatched_unit' | 'id_mismatch' | 'id_elsewhere';
   building: string; unit: string; service: string; was: string | null; now: string | null; createdOn: string; filename: string | null;
 }
 
 export async function recordIssues(q: Q, propertyId: string, batchId: string,
-  found: { unmatched: { building: string; unit: string; service: string }[]; idChanges: { building: string; unit: string; was: string; now: string }[] }): Promise<void> {
+  found: { unmatched: { building: string; unit: string; service: string }[]; idChanges: { building: string; unit: string; service?: string; was: string; now: string }[];
+    idElsewhere?: { building: string; unit: string; service: string; hardwareId: string; at: string }[] }): Promise<void> {
   const open = (await q.query<{ kind: string; building: string; unit: string; service: string; now: string | null }>(
     `SELECT kind, building, unit, service, now FROM import_issue WHERE property_id=$1 AND status='open'`, [propertyId])).rows;
   const key = (k: string, b: string, u: string, s: string, n: string | null) => [k, normLabel(b), normLabel(u), s, n ?? ''].join('|');
@@ -25,7 +27,8 @@ export async function recordIssues(q: Q, propertyId: string, batchId: string,
     await q.query(`INSERT INTO import_issue (property_id,import_batch_id,kind,building,unit,service,was,now) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [propertyId, batchId, kind, b, u, s, was, now]);
   };
   for (const x of found.unmatched) await add('unmatched_unit', x.building, x.unit, x.service ?? '', null, null);
-  for (const x of found.idChanges) await add('id_mismatch', x.building, x.unit, '', x.was, x.now);
+  for (const x of found.idChanges) await add('id_mismatch', x.building, x.unit, x.service ?? '', x.was, x.now);
+  for (const x of found.idElsewhere ?? []) await add('id_elsewhere', x.building, x.unit, x.service, x.at, x.hardwareId);
 }
 
 async function endpointFor(q: Q, propertyId: string, building: string, unit: string, service: string) {
@@ -48,6 +51,12 @@ export async function autoResolve(q: Q, propertyId: string): Promise<number> {
       const cur = (await q.query<{ hardware_id: string }>(
         `SELECT d.hardware_id FROM installation x JOIN device d ON d.id=x.device_id WHERE x.endpoint_id=$1 AND x.removed_on IS NULL AND d.status='active' AND d.kind IN ('transmitter','combo')`, [ep.endpoint_id])).rows;
       if (cur.some((c) => c.hardware_id === i.now)) note = 'The record now has this ID (swap recorded).';
+    }
+    if (i.kind === 'id_elsewhere' && i.now) {
+      const other = (await q.query<{ n: string }>(
+        `SELECT count(*) n FROM installation x JOIN device d ON d.id=x.device_id JOIN endpoint e ON e.id=x.endpoint_id JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id
+          WHERE b.property_id=$1 AND d.hardware_id=$2 AND d.status='active' AND x.removed_on IS NULL AND ($3::uuid IS NULL OR x.endpoint_id <> $3)`, [propertyId, i.now, ep?.endpoint_id ?? null])).rows[0];
+      if (Number(other.n) === 0) note = 'The transmitter is no longer on record at another unit.';
     }
     if (note) { await q.query(`UPDATE import_issue SET status='resolved', note=$2, resolved_at=now() WHERE id=$1`, [i.id, note]); n++; }
   }

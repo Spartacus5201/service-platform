@@ -234,19 +234,25 @@ export async function commitWizard(db: Db, id: string, o: { saveAs?: string | nu
       throw new WizardError('The map to be saved would read this file differently from the preview. Nothing was imported. Check columns that share a header name.');
   }
 
-  const result = await importParsed(db, v.upload.propertyId, v.preview.parsed!, { createMissing: !!o.createMissing, importedBy: o.userId ?? undefined, filename: v.upload.filename ?? undefined, fileBytes: u.bytes });
-  await db.transaction(async (tx) => {
-    if (save) {
-      await tx.query(`INSERT INTO import_layout (id,version,name,target,definition,created_by) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [layout.id, layout.version, layout.name, layout.target, JSON.stringify(layout), o.userId]);
-      await tx.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'import_layout_saved','import_layout',$2,$3)`,
-        [o.userId, layout.id, JSON.stringify({ name: layout.name, version: layout.version })]);
-    }
-    if (result.batchId && !result.duplicate)
+  // The import, the saved map and closing the upload are one transaction: all of them happen, or none.
+  const result = await importParsed(db, v.upload.propertyId, v.preview.parsed!, {
+    createMissing: !!o.createMissing, importedBy: o.userId ?? undefined, filename: v.upload.filename ?? undefined, fileBytes: u.bytes,
+    inTransaction: async (tx, res) => {
+      if (save) {
+        await tx.query(`INSERT INTO import_layout (id,version,name,target,definition,created_by) VALUES ($1,$2,$3,$4,$5,$6)`,
+          [layout.id, layout.version, layout.name, layout.target, JSON.stringify(layout), o.userId]).catch((e: unknown) => {
+          if (e instanceof Error && /duplicate key|import_layout_pkey/.test(e.message)) throw new WizardError(`Someone saved version ${layout.version} of "${layout.name}" a moment ago. Nothing was imported; open the file again to use the new version.`);
+          throw e;
+        });
+        await tx.query(`INSERT INTO audit_log (user_id,action,entity,entity_id,detail) VALUES ($1,'import_layout_saved','import_layout',$2,$3)`,
+          [o.userId, layout.id, JSON.stringify({ name: layout.name, version: layout.version })]);
+      }
       await tx.query(`UPDATE import_batch SET layout_id=$2, layout_version=$3, import_overrides=$4 WHERE id=$1`,
-        [result.batchId, layout.id, layout.version, JSON.stringify({ ...v.state.overrides, excludeReason: v.state.excludeReason ?? null })]);
-    await tx.query(`UPDATE import_upload SET bytes=NULL, import_batch_id=$2 WHERE id=$1`, [id, result.batchId ?? null]);
+        [res.batchId, layout.id, layout.version, JSON.stringify({ ...v.state.overrides, excludeReason: v.state.excludeReason ?? null })]);
+      await tx.query(`UPDATE import_upload SET bytes=NULL, import_batch_id=$2 WHERE id=$1`, [id, res.batchId]);
+    },
   });
+  if (result.duplicate) await db.query(`UPDATE import_upload SET bytes=NULL, import_batch_id=$2 WHERE id=$1`, [id, result.batchId ?? null]);
   return { result, layout: { id: layout.id, name: layout.name, version: layout.version } };
 }
 

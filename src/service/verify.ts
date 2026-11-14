@@ -2,6 +2,9 @@
 // Derived from imported data each time it is asked for, so it is always consistent with what has been imported.
 import type { Db } from '../db';
 import { LIVE_EVENT } from './record';
+import { auditLines, type AuditLine } from '../queries/audit';
+import { componentFor } from '../rules/audit';
+import { afterService } from './verdict';
 
 type Q = Pick<Db, 'query'>;
 const usd = (d: string) => (/^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d);
@@ -13,8 +16,13 @@ export interface UnitVerification {
   status: VerifyStatus; evidence: string; on: string | null;
 }
 
-const EQUIPMENT_CODES = ['NT', 'NI', 'INT', 'IDMM'];
-const TX_ISSUES = ['NT', 'INT', 'IDMM'];
+/** Audit lines per batch, worked out once per request (the rules engine plus reviewer changes). */
+type LineCache = Map<string, Map<string, AuditLine>>;
+async function lineFor(q: Q, cache: LineCache, batchId: string, readingId: string, asOf: string): Promise<AuditLine | undefined> {
+  let m = cache.get(batchId);
+  if (!m) { m = new Map((await auditLines(q, batchId, asOf)).map((l) => [l.readingId, l])); cache.set(batchId, m); }
+  return m.get(readingId);
+}
 
 interface EventRow { id: string; endpoint_id: string; building: string; unit: string; service_code: string; issue_code: string | null; action: string; outcome: string; visited_on: string; vacant: boolean;
   old_mdid: string | null; new_mdid: string | null; replaced_tx: boolean }
@@ -30,16 +38,16 @@ async function load(q: Q, where: string, args: unknown[]): Promise<EventRow[]> {
       WHERE ${where} AND ${LIVE_EVENT} ORDER BY b.label, u.current_label, e.service_code`, args)).rows;
 }
 
-async function check(q: Q, e: EventRow): Promise<UnitVerification> {
+async function check(q: Q, e: EventRow, cache: LineCache = new Map()): Promise<UnitVerification> {
   const base = { eventId: e.id, endpointId: e.endpoint_id, building: e.building, unit: e.unit, service: e.service_code, issueCode: e.issue_code };
   if (e.outcome !== 'completed') return { ...base, status: 'pending', evidence: 'Visit not completed; needs rescheduling.', on: null };
 
   // An audit is conclusive only if its whole window (either date column can be the earlier one) is on or after the visit.
-  const audit = (await q.query<{ audit_result: string; amr_id: string | null; on: string; ended: string }>(
-    `SELECT r.audit_result, r.amr_id, GREATEST(r.read_date_1, r.read_date_2, i.imported_at::date)::text "on", GREATEST(r.read_date_1, r.read_date_2)::text ended
+  const audit = (await q.query<{ id: string; batch_id: string; audit_result: string; amr_id: string | null; on: string; ended: string }>(
+    `SELECT r.id, r.import_batch_id batch_id, r.audit_result, r.amr_id, GREATEST(r.read_date_1, r.read_date_2, i.imported_at::date)::text "on", GREATEST(r.read_date_1, r.read_date_2)::text ended
        FROM audit_reading r JOIN import_batch i ON i.id=r.import_batch_id
       WHERE r.endpoint_id=$1 AND LEAST(r.read_date_1, r.read_date_2) >= $2::date ORDER BY GREATEST(r.read_date_1, r.read_date_2) DESC, i.imported_at DESC LIMIT 1`, [e.endpoint_id, e.visited_on])).rows[0];
-  const txRelated = e.replaced_tx || TX_ISSUES.includes((e.issue_code ?? '').toUpperCase());
+  const txRelated = e.replaced_tx || componentFor((e.issue_code ?? '').toUpperCase()) === 'transmitter';
   const checkin = txRelated ? (await q.query<{ on: string }>(
     `SELECT max(c.checked_in_at)::date::text "on" FROM device_checkin c JOIN device d ON d.id=c.device_id JOIN installation i ON i.device_id=d.id
       WHERE i.endpoint_id=$1 AND d.kind<>'meter' AND i.removed_on IS NULL AND d.status='active' AND c.checked_in_at::date > $2::date`, [e.endpoint_id, e.visited_on])).rows[0] : undefined;
@@ -52,10 +60,12 @@ async function check(q: Q, e: EventRow): Promise<UnitVerification> {
     const code = (audit.audit_result ?? '').trim().toUpperCase();
     if (e.replaced_tx && e.old_mdid && audit.amr_id === e.old_mdid && audit.amr_id !== e.new_mdid)
       return { ...base, status: 'failed', evidence: `Audit ending ${usd(audit.ended)} still lists the old ID ${e.old_mdid}. The billing system or read file needs the new ID ${e.new_mdid ?? ''}.`, on: audit.on };
-    if (code === 'OK') return { ...base, status: 'verified', evidence: `Audit ending ${usd(audit.ended)}: OK.`, on: audit.on };
-    if (code === 'NI' && e.vacant) return { ...base, status: 'verified', evidence: `Audit ending ${usd(audit.ended)}: no increment on a vacant unit.`, on: audit.on };
-    if (EQUIPMENT_CODES.includes(code)) return { ...base, status: 'failed', evidence: `Audit ending ${usd(audit.ended)} still reports ${code}.`, on: audit.on };
-    return { ...base, status: 'pending', evidence: `Audit ending ${usd(audit.ended)} reports ${code || 'no result'}; property to investigate usage.`, on: audit.on };
+    // The same answer the audit page gives for this reading, reviewer changes included.
+    const line = await lineFor(q, cache, audit.batch_id, audit.id, audit.ended);
+    const verdict = line ? afterService(line.recommendation) : 'flagged';
+    if (verdict === 'fixed') return { ...base, status: 'verified', evidence: `Audit ending ${usd(audit.ended)}: ${code === 'OK' ? 'OK' : `${code || 'no result'}, no action needed${line?.override ? ' (reviewer)' : ''}`}.`, on: audit.on };
+    if (verdict === 'failing') return { ...base, status: 'failed', evidence: `Audit ending ${usd(audit.ended)} still reports ${code}.`, on: audit.on };
+    return { ...base, status: 'pending', evidence: `Audit ending ${usd(audit.ended)} reports ${code || 'no result'}: ${line?.recommendation.reason ?? 'to look into'}`, on: audit.on };
   }
   if (evCheck) return { ...base, status: 'verified', evidence: `Transmitter checked in ${usd(evCheck.on)}.`, on: evCheck.on };
   return { ...base, status: 'pending', evidence: 'No audit or check-in since the visit yet.', on: null };
@@ -63,7 +73,10 @@ async function check(q: Q, e: EventRow): Promise<UnitVerification> {
 
 export async function verifyVisit(db: Q, visitId: string): Promise<UnitVerification[]> {
   const evs = await load(db, `se.visit_id=$1`, [visitId]);
-  return Promise.all(evs.map((e) => check(db, e)));
+  const cache: LineCache = new Map();
+  const out: UnitVerification[] = [];
+  for (const e of evs) out.push(await check(db, e, cache));
+  return out;
 }
 
 /** Units whose latest service did not fix the problem, across the property. */
@@ -71,9 +84,9 @@ export async function followUps(db: Q, propertyId: string): Promise<(UnitVerific
   const evs = await load(db, `v.property_id=$1 AND NOT EXISTS (
       SELECT 1 FROM service_event s3 JOIN visit v3 ON v3.id=s3.visit_id WHERE s3.endpoint_id=se.endpoint_id AND NOT s3.voided
         AND NOT EXISTS (SELECT 1 FROM service_event s4 WHERE s4.supersedes=s3.id) AND (v3.visited_on > v.visited_on OR (v3.visited_on = v.visited_on AND s3.created_at > se.created_at)))`, [propertyId]);
-  const out = [];
+  const out = []; const cache: LineCache = new Map();
   for (const e of evs) {
-    const r = await check(db, e);
+    const r = await check(db, e, cache);
     if (r.status !== 'failed') continue;
     const visit = (await db.query<{ visit_id: string }>(`SELECT visit_id FROM service_event WHERE id=$1`, [e.id])).rows[0].visit_id;
     out.push({ ...r, visitId: visit, visitedOn: e.visited_on });

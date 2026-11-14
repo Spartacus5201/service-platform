@@ -1,6 +1,9 @@
 // Unit Directory export (CSV): who has lived in each unit since when. Only building, unit and the dates are read.
 // Resident name, account number, balance and customer ID are skipped on purpose and never leave this function.
-import { parseCsv, parseDate, normLabel, ParseError } from './common';
+import { parseCsv } from './common';
+import { readWithMap } from './cim';
+import { UNIT_DIRECTORY } from '../importer/builtin';
+import { DEFAULT_SERVICES } from '../lists/services';
 
 export interface UnitDirectoryRow { building: string; unit: string; moveInOn: string | null; priorMoveOutOn: string | null; vacant: boolean }
 export interface UnitDirectoryParse { kind: 'unit_directory'; classId: string | null; rows: UnitDirectoryRow[]; warnings: string[] }
@@ -14,23 +17,7 @@ export function isUnitDirectory(text: string): boolean {
   return h.has('bldg') && h.has('unit') && h.has('startdate');
 }
 
+/** Unit Directory, read with its built-in import map. Name, account, balance and customer ID columns are never read. */
 export function parseUnitDirectory(text: string): UnitDirectoryParse {
-  const rows = parseCsv(text.replace(/^﻿/, ''));
-  const head = (rows[0] ?? []).map(norm);
-  const col = (...names: string[]) => head.findIndex((h) => names.includes(h));
-  const b = col('bldg', 'building'); const u = col('unit'); const s = col('startdate'); const e = col('enddate'); const occ = col('occ');
-  if (b < 0 || u < 0 || s < 0) throw new ParseError('Unit Directory needs Bldg #, Unit # and Start Date columns.');
-  const out: UnitDirectoryRow[] = []; const warnings: string[] = [];
-  rows.slice(1).forEach((r, i) => {
-    const building = (r[b] ?? '').trim(); const unit = (r[u] ?? '').trim();
-    if (!unit) return;
-    const start = parseDate(r[s]); const end = e >= 0 ? parseDate(r[e]) : null;
-    if ((r[s] ?? '').trim() && !start) warnings.push(`Row ${i + 2}: start date "${r[s]}" not understood; unit treated as vacant.`);
-    const noOcc = occ >= 0 && ['null', '0'].includes((r[occ] ?? '').trim().toLowerCase());
-    const vacant = !start || !!end || noOcc;
-    out.push({ building, unit, moveInOn: vacant ? null : start, priorMoveOutOn: end, vacant });
-  });
-  if (!out.length) throw new ParseError('Unit Directory has no unit rows.');
-  void normLabel;
-  return { kind: 'unit_directory', classId: null, rows: out, warnings };
+  return readWithMap(parseCsv(text.replace(/^\uFEFF/, '')), UNIT_DIRECTORY, DEFAULT_SERVICES) as UnitDirectoryParse;
 }

@@ -22,6 +22,8 @@ export interface ImportOptions {
   /** PSR rows carry no utility; defaults to water. */
   defaultServiceCode?: string;
   allowClassMismatch?: boolean;
+  /** Runs inside the import's transaction after the rows are stored: anything it writes commits with the import, or neither does. */
+  inTransaction?: (tx: Q, res: ImportResult) => Promise<void>;
 }
 
 export interface ImportResult {
@@ -34,7 +36,9 @@ export interface ImportResult {
   unitsCreated: number;
   occupancyUpdated: number;
   unmatched: { building: string; unit: string; service: string }[];
-  idChanges: { building: string; unit: string; was: string; now: string }[];
+  idChanges: { building: string; unit: string; service?: string; was: string; now: string }[];
+  /** Transmitter IDs in the file that are on record at a different unit: not installed here, kept as import problems. */
+  idElsewhere: { building: string; unit: string; service: string; hardwareId: string; at: string }[];
   warnings: string[];
 }
 
@@ -106,6 +110,15 @@ export class Registry {
 }
 
 /** Find or create a device by radio ID within the property. */
+/** Where else (another endpoint) this device is installed right now, as "1-102 WS", or null. */
+async function installedElsewhere(q: Q, deviceId: string, endpointId: string): Promise<string | null> {
+  const r = await one<{ place: string }>(q,
+    `SELECT ltrim(b.label,'0') || '-' || ltrim(u.current_label,'0') || ' ' || e.service_code AS place FROM installation i
+       JOIN endpoint e ON e.id=i.endpoint_id JOIN unit u ON u.id=e.unit_id JOIN building b ON b.id=u.building_id
+      WHERE i.device_id=$1 AND i.removed_on IS NULL AND i.endpoint_id <> $2 LIMIT 1`, [deviceId, endpointId]);
+  return r?.place ?? null;
+}
+
 async function upsertDevice(q: Q, propertyId: string, kind: string, hardwareId: string, extra: { model?: string | null; serial?: string | null } = {}): Promise<{ id: string; created: boolean }> {
   const row = await one<{ id: string }>(q, `SELECT id FROM device WHERE property_id=$1 AND kind=$2 AND hardware_id=$3`, [propertyId, kind, hardwareId]);
   if (row) {
@@ -144,7 +157,7 @@ async function ensureInstalled(q: Q, propertyId: string, deviceId: string, endpo
 }
 
 function emptyResult(kind: ImportKind): ImportResult {
-  return { batchId: null, kind, duplicate: false, readings: 0, devices: 0, checkins: 0, unitsCreated: 0, occupancyUpdated: 0, unmatched: [], idChanges: [], warnings: [] };
+  return { batchId: null, kind, duplicate: false, readings: 0, devices: 0, checkins: 0, unitsCreated: 0, occupancyUpdated: 0, unmatched: [], idChanges: [], idElsewhere: [], warnings: [] };
 }
 
 export async function importParsed(db: Db, propertyId: string, parsed: Parsed, opts: ImportOptions = {}): Promise<ImportResult> {
@@ -187,6 +200,7 @@ export async function importParsed(db: Db, propertyId: string, parsed: Parsed, o
       readings: res.readings, devices: res.devices, checkins: res.checkins, unitsCreated: res.unitsCreated,
       occupancyUpdated: res.occupancyUpdated, unmatched: res.unmatched.length, idChanges: res.idChanges.length,
     })]);
+    if (opts.inTransaction) await opts.inTransaction(tx, res);
   });
   return res;
 }
@@ -233,11 +247,13 @@ async function importAudit(q: Q, propertyId: string, res: ImportResult, reg: Reg
         `SELECT d.hardware_id FROM installation i JOIN device d ON d.id=i.device_id
           WHERE i.endpoint_id=$1 AND d.kind='transmitter' AND i.removed_on IS NULL AND d.status='active'`, [eid]);
       if (cur && cur.hardware_id !== r.amrId) {
-        res.idChanges.push({ building: r.building.trim(), unit: r.unit.trim(), was: cur.hardware_id, now: r.amrId });
+        res.idChanges.push({ building: r.building.trim(), unit: r.unit.trim(), service: r.serviceCode, was: cur.hardware_id, now: r.amrId });
       } else if (!cur) {
         const d = await upsertDevice(q, propertyId, 'transmitter', r.amrId);
         if (d.created) res.devices++;
-        await ensureInstalled(q, propertyId, d.id, eid, null, 'import');
+        const at = d.created ? null : await installedElsewhere(q, d.id, eid);
+        if (at) res.idElsewhere.push({ building: r.building.trim(), unit: r.unit.trim(), service: r.serviceCode, hardwareId: r.amrId, at });
+        else await ensureInstalled(q, propertyId, d.id, eid, null, 'import');
       }
     }
   }
@@ -260,11 +276,13 @@ async function importCim(q: Q, propertyId: string, res: ImportResult, reg: Regis
       `SELECT d.hardware_id FROM installation i JOIN device d ON d.id=i.device_id
         WHERE i.endpoint_id=$1 AND d.kind='transmitter' AND i.removed_on IS NULL AND d.status='active'`, [eid]);
     if (cur && cur.hardware_id !== dev.hardwareId) {
-      res.idChanges.push({ building: dev.building, unit: dev.unit, was: cur.hardware_id, now: dev.hardwareId });
+      res.idChanges.push({ building: dev.building, unit: dev.unit, service: dev.serviceCode, was: cur.hardware_id, now: dev.hardwareId });
       continue;
     }
     const d = await upsertDevice(q, propertyId, 'transmitter', dev.hardwareId, { model: dev.transmitterModel ?? null });
     if (d.created) res.devices++;
+    const at = d.created ? null : await installedElsewhere(q, d.id, eid);
+    if (at) { res.idElsewhere.push({ building: dev.building, unit: dev.unit, service: dev.serviceCode, hardwareId: dev.hardwareId, at }); continue; }
     if (dev.transmitterModel) await q.query(`UPDATE device SET model=COALESCE(model,$2) WHERE id=$1`, [d.id, dev.transmitterModel]);
     await ensureInstalled(q, propertyId, d.id, eid, null, 'import');
     await ensurePlaceholderMeter(q, propertyId, eid, null, 'import', dev.meterModel);

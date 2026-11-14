@@ -57,6 +57,9 @@ export default function ImportForm({ propertyId, firstImport }: { propertyId: st
           {!!r.idChanges?.length && (
             <div className="flash"><b>{r.idChanges.length} transmitter ID(s) differ from the record</b> and were not changed. Record the swap as a service visit to update them (kept under Import problems until then): {r.idChanges.slice(0, 8).map((c) => `${c.building}-${c.unit} (${c.was} → ${c.now})`).join(', ')}{r.idChanges.length > 8 ? '…' : ''}</div>
           )}
+          {!!r.idElsewhere?.length && (
+            <div className="flash error"><b>{r.idElsewhere.length} transmitter ID(s) are on record at a different unit</b> and were not moved (kept under Import problems): {r.idElsewhere.slice(0, 8).map((c) => `${c.building}-${c.unit} has ${c.hardwareId}, on record at ${c.at}`).join('; ')}{r.idElsewhere.length > 8 ? '…' : ''}</div>
+          )}
           {!!r.warnings?.length && <details><summary className="small">{r.warnings.length} note(s)</summary><ul>{r.warnings.map((w, i) => <li key={i} className="small">{w}</li>)}</ul></details>}
         </div>
       )}
